@@ -322,6 +322,40 @@ HTTP CRM 页面也可使用下面的按钮。`US-DEMO` 须由 CRM 按当前用�
 
 `subject` 使用 CRM 内部稳定、不含个人信息的用户标识，长度 1–128 字符，不含首尾空白或控制字符。POST 使用 `Content-Type: application/json`，正文不超过 8192 字节，不接受压缩正文或未知字段。
 
+### 回调处理器（Node.js）
+
+仓库提供 [callback-adapter.js](../src/crm/callback-adapter.js)，供 CRM 的 Node.js 22+ 后端使用。复制组件时，同时保留它引用的 [checks/registry.js](../src/checks/registry.js) 及两者的相对目录。组件负责校验回调参数、向监测站签票和返回跳转响应。把它挂载到 CRM 的实际 HTTPS 回调路由；输入、输出分别是标准 `Request` 和 `Response`，框架层负责转换。
+
+CRM 需要提供两个鉴权函数：
+
+| 函数 | 要做什么 |
+|---|---|
+| `identifyUser(request, {signal, requestId})` | 验证真实 CRM 登录态，返回普通对象，其自身字段 `subject` 是稳定的用户标识；未登录返回 `null` |
+| `authorizeStore(identity, storeKey, {signal, requestId})` | 按 CRM 用户权限和店铺映射判断访问权；只有返回严格的 `true` 才允许签票 |
+
+两个函数都必须提供。用户标识不从回调 query 中读取，也不能按店铺名称猜测权限。鉴权过程应响应 `signal`，在请求取消或超时时停止处理。
+
+将这两个已实现的函数传入处理器：
+
+```js
+import { createCrmCallbackHandler } from './src/crm/callback-adapter.js';
+
+const handleCallback = createCrmCallbackHandler({
+  callbackUrl: process.env.CRM_MONITOR_CALLBACK_URL,
+  monitorOrigin: 'https://amzcheck.pc51.com',
+  apiToken: process.env.AMZGUARD_CRM_API_TOKEN,
+  identifyUser,
+  authorizeStore,
+});
+// 在 CRM 对应路由中调用 await handleCallback(request)，将 Response 返回给浏览器。
+```
+
+`CRM_MONITOR_CALLBACK_URL` 是 CRM 后端自己的配置项，值须与监测站的 `AMZGUARD_CRM_CALLBACK_URL` 一致。处理器默认总超时 5 秒，覆盖两次鉴权、签票和响应读取，可通过 `timeoutMs` 配置为 1–30000 毫秒；只发送协议需要的 `subject` 与握手目的地，不转发 CRM Cookie 或浏览器 Authorization。
+
+回调失败时返回 `application/problem+json`，错误码以 `CRM_CALLBACK_` 开头，并带有 `requestId`。401 表示用户未登录，403 表示没有店铺权限，503 表示 CRM 鉴权不可用，502 表示签票请求失败或响应不合约定。408 表示请求取消，504 表示超时；处理器不会自动重试签票，用户需从 CRM 重新开始握手。
+
+这个组件不包含 CRM 的用户数据库、登录入口或店铺权限实现。部署组件、接好两个鉴权函数，再用真实 CRM 用户完成联调后，才算接通免密登录。未登录时先走 CRM 原有登录流程，随后重新开始监测站握手。
+
 HTTP 来源页面不会放宽后续校验：回调证书必须覆盖回调域名，签票只由 CRM 后端完成，票据只在发起跳转的浏览器中兑换。若回调出现证书错误，应由 CRM 维护人员修正证书配置，不关闭 TLS 校验或改用 HTTP 回调。
 
 ### 有效期与会话规则
@@ -331,6 +365,7 @@ HTTP 来源页面不会放宽后续校验：回调证书必须覆盖回调域名
 | 握手 | 120 秒，绑定发起它的浏览器，通过独立 HttpOnly Cookie 校验 |
 | 票据 | 一次有效，最长 60 秒，且不能超过握手期限；跨浏览器或重复兑换会被拒绝 |
 | 只读会话 | 30 分钟，不自动续期，只授权一家店铺；失效后从 CRM 重新进入 |
+| CRM 退出或撤销用户权限 | 不会主动撤销已签发的监测会话；该会话最长继续有效至 30 分钟到期。再次进入时由 CRM 重新鉴权；监测站停用店铺或撤销客户端店铺授权则立即阻止读取 |
 | 重启或 CRM 入站认证配置变化 | 内存中的握手、票据和会话失效；修改店铺展示名或页面设置不会清空会话。当前实现为单进程，不能任意分发到多个实例 |
 
 `loginUrl` 固定指向监测站的 `/crm/sso#ticket=...`。CRM 不要记录这个值或拼接任意 `returnUrl`。监测站完成页会先清除 fragment，再同源 POST 兑换票据。
