@@ -1,0 +1,32 @@
+[Unit]
+Description=AMZ Guard user-confirmed product upload worker
+Requires=amzguard-ziniao.service
+After=amzguard-ziniao.service network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/amzguard
+EnvironmentFile=/etc/amzguard/collector.env
+EnvironmentFile=/etc/amzguard/channels.env
+EnvironmentFile=/etc/amzguard/product-upload.env
+Environment=HOME=/home/ubuntu
+Environment=DISPLAY=:99
+Environment=XAUTHORITY=/run/amzguard-xvfb/Xauthority
+ExecStart=/usr/local/bin/node /opt/amzguard/src/tools/product-upload-worker.js
+SuccessExitStatus=0 1
+TimeoutStartSec=30min
+Nice=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/opt/amzguard/out /home/ubuntu/.cache/selenium /home/ubuntu/.config/ziniaobrowser/instances/userdata1/logs/client
+ReadOnlyPaths=/opt/amzguard
+InaccessiblePaths=-/home/ubuntu/.ssh -/home/ubuntu/.npm -/home/ubuntu/.pip

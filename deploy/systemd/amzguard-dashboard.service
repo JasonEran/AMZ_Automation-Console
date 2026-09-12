@@ -1,0 +1,32 @@
+[Unit]
+Description=AMZ Guard authenticated dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/amzguard
+EnvironmentFile=/etc/amzguard/dashboard.env
+EnvironmentFile=/etc/amzguard/product-upload.env
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+ExecStart=/usr/local/bin/node /opt/amzguard/src/server.js
+Restart=always
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/opt/amzguard/out
+ReadOnlyPaths=/opt/amzguard
+
+[Install]
+WantedBy=multi-user.target

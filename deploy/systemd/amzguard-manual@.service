@@ -1,0 +1,34 @@
+[Unit]
+Description=AMZ Guard targeted manual run (%i)
+Requires=amzguard-ziniao.service
+After=amzguard-ziniao.service network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/amzguard
+EnvironmentFile=/etc/amzguard/collector.env
+EnvironmentFile=/etc/amzguard/channels.env
+Environment=HOME=/home/ubuntu
+Environment=DISPLAY=:99
+Environment=XAUTHORITY=/run/amzguard-xvfb/Xauthority
+# %I unescapes '-' as a filesystem '/', turning `store-health` into
+# `store/health`. The instance grammar is already allow-listed by
+# manual-run.sh, so pass systemd's escaped-but-literal %i form.
+ExecStart=/opt/amzguard/deploy/manual-run.sh %i
+SuccessExitStatus=0 1
+TimeoutStartSec=3h
+Nice=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/opt/amzguard/out /home/ubuntu/.cache/selenium /home/ubuntu/.config/ziniaobrowser/instances/userdata1/logs/client
+ReadOnlyPaths=/opt/amzguard
+InaccessiblePaths=-/home/ubuntu/.ssh -/home/ubuntu/.npm -/home/ubuntu/.pip

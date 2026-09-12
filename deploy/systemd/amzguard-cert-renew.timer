@@ -1,0 +1,10 @@
+[Unit]
+Description=Twice-daily AMZ Guard TLS renewal check
+
+[Timer]
+OnCalendar=*-*-* 00,12:15:00 Asia/Shanghai
+RandomizedDelaySec=45m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

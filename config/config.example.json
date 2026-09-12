@@ -1,0 +1,137 @@
+{
+  "_comment": "复制为 config/config.json 后修改。config.json 已被 .gitignore 忽略。",
+
+  "ziniao": {
+    "mode": "webdriver",
+    "_mode_note": "默认走紫鸟官方 WebDriver HTTP + Selenium。要临时退回旧 ZClaw/CLI，改为 cli。",
+    "bin": "ziniao-cli",
+    "webdriver": {
+      "_credentials_note": "macOS 用 npm run credentials:setup 存入登录钥匙串；其他系统用 ZINIAO_COMPANY、ZINIAO_USERNAME、ZINIAO_PASSWORD。绝不写进本文件。",
+      "clientPath": "/Applications/ziniao.app",
+      "_client_path_note": "macOS 默认 /Applications/ziniao.app；Linux 默认 /opt/ziniao/ziniaobrowser；Windows 填 ziniao.exe 的绝对路径。",
+      "socketPort": 18888,
+      "autoStart": true,
+      "startTimeoutMs": 60000,
+      "httpTimeoutMs": 120000,
+      "coreTimeoutMs": 600000,
+      "corePollMs": 2000,
+      "pageLoadTimeoutMs": 120000,
+      "pageLoadStrategy": "none",
+      "driverPath": "",
+      "_driver_note": "可留空让 Selenium Manager 自动匹配；生产更建议按 startBrowser 返回的 core_version 配置同大版本 chromedriver。",
+      "windowRatio": 100,
+      "preferBrowserOauth": true,
+      "openLauncherPageBeforeTarget": true,
+      "launcherSettleMs": 2000,
+      "_launcher_note": "按紫鸟官方示例先打开 startBrowser 返回的 launcherPage，再进入业务深链，以便恢复已保存的平台登录态。",
+      "autoLoginAmazon": true,
+      "amazonLoginTimeoutMs": 90000,
+      "passkeyDialogXRatio": 0.5,
+      "passkeyDialogYRatio": 0.613,
+      "_amazon_login_note": "登录态失效时使用紫鸟已填账号/Passkey/验证码恢复；Linux 原生 Passkey 弹窗需要 xdotool。程序不读取或保存 Amazon 密码。"
+    },
+    "openTimeoutMs": 180000,
+    "visitTimeoutMs": 60000,
+    "execTimeoutMs": 45000,
+    "contentTimeoutMs": 45000,
+    "waitUntil": "networkidle",
+    "settleMs": 4000,
+    "headless": false,
+    "closeStoreAfterCheck": true,
+    "keepOpenOnFailure": false,
+
+    "_concurrency_note": [
+      "concurrency 只作用于店铺之间；单个店铺内部的步骤永远串行（同一亚马逊会话不并发）。",
+      "默认 1（步进）。10 个店步进约 4-12 分钟，08:00 批次完全够用，30+ 店才值得开并发。",
+      "开并发前必须确认：紫鸟里每个店铺都有独立 IP / 指纹环境。共用环境的店同时活动会放大账号关联风险。",
+      "另外每个店是一个完整 Chromium（400MB-1GB 内存），并发数受本机内存和紫鸟套餐限制。",
+      "staggerMs / jitterMs：错开各店的启动时刻，避免多个浏览器同一瞬间拉起。开并发时建议 3000 / 2000。"
+    ],
+    "concurrency": 1,
+    "staggerMs": 0,
+    "jitterMs": 0,
+
+    "retries": 2,
+    "retryDelayMs": 8000
+  },
+
+  "storeHealth": {
+    "_comment": "第 1 项：Policy Compliance == Healthy 为正常，其他一律异常（含无法判定）。",
+    "_paths_note": "实测 /performance/dashboard 才是 Account Health 页；/performance/dashboard/accounthealth 是 404。",
+    "paths": [
+      "/performance/dashboard",
+      "/performance/dashboard?ref=ah_home"
+    ],
+    "defaultHost": "sellercentral.amazon.com",
+    "screenshot": true,
+    "fullPageScreenshot": true,
+    "saveRawPageText": true,
+    "alertOnAhrDrop": true,
+    "ahrDropThreshold": 1,
+    "alertOnStatusChange": true
+  },
+
+  "codex": {
+    "_comment": [
+      "Codex 仅在确定性解析失败 / DOM 与文本判定冲突时兜底。会把（脱敏后的）页面文本发送给 Codex 云端。",
+      "默认关闭：真机实测每次调用 >2 分钟且返回不了可解析结果，7 店一轮白耗 8 分钟。",
+      "确定性解析失败时直接判 UNKNOWN 并报警，比等一个拿不到的兜底更有用。"
+    ],
+    "enabled": false,
+    "bin": "codex",
+    "model": "",
+    "timeoutMs": 120000,
+    "sandbox": "read-only",
+    "maxPageTextChars": 8000,
+    "redact": true
+  },
+
+  "alert": {
+    "console": true,
+    "file": true,
+    "dingtalk": {
+      "enabled": false,
+      "webhook": "",
+      "secret": "",
+      "_channels_note": "Webhook/Secret 仅允许环境变量或 macOS Keychain；operations 接收程序故障，regular 接收业务状态。",
+      "channels": [],
+      "atMobiles": [],
+      "atAll": false
+    },
+    "webhook": {
+      "enabled": false,
+      "url": "",
+      "method": "POST",
+      "headers": {}
+    }
+  },
+
+  "crm": {
+    "_comment": "填入 CRM 导入接口后置 enabled=true。未启用时仍会生成 out/ 下的 json/csv 导出文件。",
+    "enabled": false,
+    "endpoint": "",
+    "method": "POST",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "timeoutMs": 30000,
+    "retries": 2
+  },
+
+  "schedule": {
+    "_comment": "北京时间。install-schedule.sh 读取这里生成 launchd 计划。",
+    "timezone": "Asia/Shanghai",
+    "slots": [
+      { "name": "am",       "at": "08:00" },
+      { "name": "ads-off",  "at": "11:20" },
+      { "name": "pm",       "at": "15:30" },
+      { "name": "ads-on",   "at": "18:30" }
+    ]
+  },
+
+  "paths": {
+    "outDir": "out"
+  },
+
+  "logLevel": "info"
+}

@@ -1,0 +1,36 @@
+{
+  "name": "singal-amz-guard",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "亚马逊后台自动巡检（9 项）+ 独立竞品情报看板。默认经紫鸟官方 WebDriver + Selenium 采集。",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "bash scripts/test.sh",
+    "test:unit": "bash scripts/test.sh unit",
+    "serve": "node src/server.js",
+    "checks": "node src/cli.js checks",
+    "doctor": "node src/cli.js doctor",
+    "stores": "node src/cli.js stores",
+    "am": "node src/cli.js run-slot am",
+    "pm": "node src/cli.js run-slot pm",
+    "ads:off": "node src/cli.js run-slot ads-off",
+    "ads:on": "node src/cli.js run-slot ads-on",
+    "selftest": "node src/cli.js store-health --self-test",
+    "test-notify": "node src/cli.js test-notify",
+    "seed": "node scripts/seed-demo.mjs",
+    "seed:clear": "node scripts/seed-demo.mjs --clear",
+    "schedule:install": "node src/schedule.js install",
+    "schedule:status": "node src/schedule.js status",
+    "schedule:uninstall": "node src/schedule.js uninstall",
+    "credentials:setup": "node scripts/configure-credentials.mjs setup",
+    "credentials:status": "node scripts/configure-credentials.mjs status",
+    "credentials:delete": "node scripts/configure-credentials.mjs delete",
+    "pack": "bash scripts/pack.sh"
+  },
+  "dependencies": {
+    "selenium-webdriver": "^4.47.0"
+  }
+}

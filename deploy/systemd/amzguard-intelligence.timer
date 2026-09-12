@@ -1,0 +1,11 @@
+[Unit]
+Description=Check the independent competitor queue every five minutes
+
+[Timer]
+OnCalendar=*-*-* *:0/5:00
+Persistent=true
+AccuracySec=10s
+Unit=amzguard-intelligence.service
+
+[Install]
+WantedBy=timers.target

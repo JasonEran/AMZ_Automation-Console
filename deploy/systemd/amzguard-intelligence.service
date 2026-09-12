@@ -1,0 +1,28 @@
+[Unit]
+Description=AMZ Guard independent read-only competitor observation
+After=amzguard-ziniao.service network-online.target
+Requires=amzguard-ziniao.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/amzguard
+EnvironmentFile=/etc/amzguard/collector.env
+Environment=DISPLAY=:99
+Environment=XAUTHORITY=/run/amzguard-xvfb/Xauthority
+ExecStart=/usr/local/bin/node /opt/amzguard/src/intelligence/worker.js
+TimeoutStartSec=10min
+Nice=10
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/opt/amzguard/out /home/ubuntu/.cache/selenium /home/ubuntu/.config/ziniaobrowser/instances/userdata1/logs/client
+ReadOnlyPaths=/opt/amzguard
+InaccessiblePaths=-/home/ubuntu/.ssh -/home/ubuntu/.npm -/home/ubuntu/.pip

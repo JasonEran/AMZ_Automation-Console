@@ -1,0 +1,9 @@
+[Unit]
+Description=AMZ Guard product upload queue trigger
+
+[Path]
+PathChanged=/opt/amzguard/out/product-uploads/queue
+Unit=amzguard-product-upload.service
+
+[Install]
+WantedBy=multi-user.target

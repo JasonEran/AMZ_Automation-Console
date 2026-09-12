@@ -1,0 +1,17 @@
+{
+  "_comment": [
+    "复制为 config/asins.json。第 5 项（ASIN 常规检查）用这个清单。",
+    "asin     = 要监控的 ASIN",
+    "market   = 站点，决定商品页域名（US/UK/DE/JP/...）",
+    "storeKey = 用哪个店铺的紫鸟浏览器去访问（对应 stores.json 的 key），留空则用第一个店铺",
+    "domain   = 可选，直接指定域名，覆盖 market 推断",
+    "label    = 可选备注，只用于报表可读性",
+    "monitoring = active（每批）/ weekly（低频复核）/ disabled（人工停检）",
+    "weekly/disabled 可覆盖 VOC 自动发现；必须填写 monitoringReason 留下可审计原因"
+  ],
+  "asins": [
+    { "asin": "B0EXAMPLE1", "market": "US", "storeKey": "US-01", "label": "示例产品A", "enabled": true },
+    { "asin": "B0EXAMPLE2", "market": "US", "storeKey": "US-01", "label": "示例产品B", "monitoring": "weekly", "monitoringReason": "零售页长期无商品内容，仍保留周期复核" },
+    { "asin": "B0EXAMPLE3", "market": "US", "storeKey": "US-01", "label": "示例产品C", "monitoring": "disabled", "monitoringReason": "运营已确认不再属于监测范围" }
+  ]
+}

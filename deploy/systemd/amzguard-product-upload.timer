@@ -1,0 +1,11 @@
+[Unit]
+Description=AMZ Guard product upload queue recovery trigger
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=1min
+Persistent=true
+Unit=amzguard-product-upload.service
+
+[Install]
+WantedBy=timers.target

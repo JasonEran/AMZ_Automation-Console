@@ -1,0 +1,14 @@
+[Unit]
+Description=Renew short-lived IP certificate for AMZ Guard
+After=network-online.target nginx.service
+Wants=network-online.target nginx.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/certbot-ip/bin/certbot renew --cert-name 123.58.218.45 --quiet --deploy-hook "systemctl reload nginx"
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/opt/certbot-ip
+ReadWritePaths=/etc/letsencrypt /var/lib/letsencrypt /var/log/letsencrypt /var/www/acme

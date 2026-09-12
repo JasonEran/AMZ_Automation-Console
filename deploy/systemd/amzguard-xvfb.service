@@ -1,0 +1,28 @@
+[Unit]
+Description=AMZ Guard private virtual display
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+RuntimeDirectory=amzguard-xvfb
+RuntimeDirectoryMode=0700
+Environment=DISPLAY=:99
+Environment=XAUTHORITY=/run/amzguard-xvfb/Xauthority
+ExecStartPre=/bin/sh -c 'umask 077; cookie=$(/usr/bin/mcookie); /usr/bin/xauth -f /run/amzguard-xvfb/Xauthority add :99 . "$cookie"'
+ExecStart=/usr/bin/Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp -auth /run/amzguard-xvfb/Xauthority
+Restart=always
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

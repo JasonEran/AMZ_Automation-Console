@@ -1,0 +1,23 @@
+# local runtime output (reports, screenshots, raw page text, logs, state)
+/out/
+/dist/
+/DEPLOYED_MANIFEST.sha256
+
+# local secrets / real store list
+/config/config.json
+/config/stores.json
+/config/asins.json
+*.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# node
+/node_modules/
+npm-debug.log*
+
+# os
+.DS_Store
+._*

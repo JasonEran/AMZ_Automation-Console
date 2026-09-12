@@ -1,0 +1,10 @@
+[Unit]
+Description=AMZ Guard daily evidence retention timer
+
+[Timer]
+OnCalendar=*-*-* 03:10:00 Asia/Shanghai
+Persistent=true
+RandomizedDelaySec=20m
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,24 @@
+[Unit]
+Description=AMZ Guard explicitly labelled notification test
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/amzguard
+EnvironmentFile=/etc/amzguard/channels.env
+ExecStart=/usr/local/bin/node /opt/amzguard/src/cli.js test-notify
+TimeoutStartSec=2min
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/opt/amzguard/out
+ReadOnlyPaths=/opt/amzguard

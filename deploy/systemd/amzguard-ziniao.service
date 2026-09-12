@@ -1,0 +1,43 @@
+[Unit]
+Description=Ziniao official WebDriver HTTP client for AMZ Guard
+Requires=amzguard-xvfb.service
+After=amzguard-xvfb.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/amzguard
+EnvironmentFile=/etc/amzguard/ziniao.env
+Environment=HOME=/home/ubuntu
+Environment=DISPLAY=:99
+Environment=XAUTHORITY=/run/amzguard-xvfb/Xauthority
+RuntimeDirectory=amzguard-ziniao
+RuntimeDirectoryMode=0700
+Environment=XDG_RUNTIME_DIR=/run/amzguard-ziniao
+ExecStart=/usr/bin/dbus-run-session -- /opt/amzguard/deploy/run-ziniao-linux.sh
+Restart=always
+RestartSec=8
+TimeoutStopSec=45
+# Electron forks browser/gateway processes beyond its short-lived launcher.
+# Stop the whole service group before restarting after a crash or OOM.
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/home/ubuntu/.cache/dconf /home/ubuntu/.cache/ziniaobrowser
+ReadWritePaths=/home/ubuntu/.config/chromium /home/ubuntu/.config/ziniaobrowser
+ReadWritePaths=/home/ubuntu/.config/ziniaobrowser-kernel /home/ubuntu/.config/ziniaobrowserdatas
+ReadWritePaths=/home/ubuntu/.pki /run/amzguard-ziniao
+ReadOnlyPaths=/opt/amzguard /opt/ziniao
+InaccessiblePaths=-/home/ubuntu/.ssh -/home/ubuntu/.npm -/home/ubuntu/.pip
+
+[Install]
+WantedBy=multi-user.target

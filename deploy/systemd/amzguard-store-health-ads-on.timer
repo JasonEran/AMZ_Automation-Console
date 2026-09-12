@@ -1,0 +1,9 @@
+[Unit]
+Description=AMZ Guard timer ads-on (Beijing 18:30)
+[Timer]
+OnCalendar=*-*-* 18:30:00 Asia/Shanghai
+Persistent=true
+AccuracySec=1min
+Unit=amzguard-store-health-ads-on.service
+[Install]
+WantedBy=timers.target
