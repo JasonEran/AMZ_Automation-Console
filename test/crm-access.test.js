@@ -309,3 +309,80 @@ test('public configuration and statistics contain no token, callback or user ide
     assert.equal(serialized.includes(secret), false);
   }
 });
+
+test('popup mode is optional and accepts only one exact external HTTP or HTTPS origin', () => {
+  assert.deepEqual(createCrmAccess({ env: {} }).publicConfig().ssoModes, []);
+  const redirect = fixture();
+  assert.deepEqual(redirect.access.publicConfig().ssoModes, ['redirect']);
+  rejects(() => redirect.access.beginBridge({ ...redirect.dest, requestId: 'R'.repeat(43) }), 503, 'CRM_BRIDGE_UNAVAILABLE');
+  for (const origin of ['http://crm.example.test', 'https://crm.example.test:8443']) {
+    const f = fixture({ env: { AMZGUARD_CRM_CALLBACK_URL: '', AMZGUARD_CRM_BRIDGE_ORIGIN: origin } });
+    assert.deepEqual(f.access.publicConfig().ssoModes, ['popup']);
+    assert.equal(f.access.publicConfig().ssoAvailable, true);
+    rejects(() => f.access.beginChallenge(f.dest), 503, 'CRM_SSO_UNAVAILABLE');
+    assert.equal(f.access.beginBridge({ ...f.dest, requestId: 'R'.repeat(43) }).bridgeOrigin, origin);
+  }
+  for (const origin of ['*', 'http://*.example.test', 'http://crm.example.test/', 'http://crm.example.test/path',
+    'http://user:pass@crm.example.test', 'http://crm.example.test?x', 'http://crm.example.test#x',
+    'http://crm.example.test?', 'http://crm.example.test#', 'http://crm.example.test\\evil',
+    ' http://crm.example.test', 'http://crm.example.test ', 'http://crm.\texample.test',
+    'http://crm.example.test\n', 'http://CRM.example.test', 'http://crm.example.test:80',
+    'https://monitor.example.test', '//crm.example.test', 'file:///crm', 'null', null, 123]) {
+    rejects(() => fixture({ env: { AMZGUARD_CRM_BRIDGE_ORIGIN: origin } }), 503, 'CRM_CONFIG_INVALID');
+  }
+  rejects(() => createCrmAccess({ env: { AMZGUARD_CRM_BRIDGE_ORIGIN: 'http://crm.example.test' } }), 503, 'CRM_CONFIG_INVALID');
+});
+
+test('popup challenges retain exact destination, separate browser binding, expiry and one-time exchange', () => {
+  const f = fixture({ env: { AMZGUARD_CRM_BRIDGE_ORIGIN: 'http://crm.example.test' } });
+  assert.deepEqual(f.access.publicConfig().ssoModes, ['redirect', 'popup']);
+  const started = f.access.beginBridge({ ...f.dest, requestId: 'R'.repeat(43) });
+  assert.equal(started.requestId, 'R'.repeat(43));
+  assert.equal(started.expiresAt, f.now() + 120_000);
+  for (const mismatch of [{ storeKey: 'US-02' }, { view: 'results' }, { checkId: 'feedback' }]) {
+    rejects(() => f.access.issueTicket(f.machine(), { ...f.dest, ...mismatch, subject: 'user', challengeId: started.challengeId }), 403, 'CRM_DESTINATION_MISMATCH');
+  }
+  const issued = f.access.issueTicket(f.machine(), { ...f.dest, subject: 'user', challengeId: started.challengeId });
+  const ticket = issued.loginUrl.split('#ticket=')[1];
+  rejects(() => f.access.exchangeTicket(ticket, 'B'.repeat(43)), 401, 'CRM_TICKET_INVALID');
+  const session = f.access.exchangeTicket(ticket, started.browserToken);
+  assert.equal(session.session.storeKey, 'US-01');
+  assert.equal(Object.hasOwn(session.session, 'requestId'), false, 'public correlation does not expand ticket/session fields');
+  rejects(() => f.access.authorizeStore(session.session, 'US-02'), 403, 'CRM_STORE_FORBIDDEN');
+  rejects(() => f.access.exchangeTicket(ticket, started.browserToken), 401, 'CRM_TICKET_INVALID');
+  const expired = f.access.beginBridge({ storeKey: 'US-01', view: 'results', requestId: 'S'.repeat(43) });
+  assert.equal(expired.checkId, null);
+  f.advance(120_000);
+  rejects(() => f.access.issueTicket(f.machine(), { storeKey: 'US-01', view: 'results', subject: 'user', challengeId: expired.challengeId }), 401, 'CRM_CHALLENGE_INVALID');
+});
+
+test('popup rejects unknown fields, invalid correlation and unauthorized destination without allocating challenges', () => {
+  const f = fixture({ env: { AMZGUARD_CRM_BRIDGE_ORIGIN: 'http://crm.example.test' } });
+  const input = { ...f.dest, requestId: 'R'.repeat(43) };
+  for (const requestId of [undefined, '', 'R'.repeat(42), 'R'.repeat(44), 'x'.repeat(42) + '/', [], 1]) {
+    rejects(() => f.access.beginBridge({ ...input, requestId }), 400, 'CRM_INVALID_REQUEST_ID');
+  }
+  for (const field of ['callbackUrl', 'openerOrigin', 'role', 'ticket', 'expiresAt']) {
+    rejects(() => f.access.beginBridge({ ...input, [field]: 'untrusted' }), 400, 'CRM_INVALID_INPUT');
+  }
+  rejects(() => f.access.beginBridge({ ...input, storeKey: 'US-03' }), 403, 'CRM_STORE_FORBIDDEN');
+  rejects(() => f.access.beginBridge({ ...input, checkId: 'intelligence' }), 400, 'CRM_INVALID_CHECK');
+  rejects(() => f.access.beginBridge({ ...input, view: 'admin' }), 400, 'CRM_INVALID_VIEW');
+  assert.deepEqual(f.access.stats(), { challenges: 0, tickets: 0, sessions: 0 });
+});
+
+test('adding, rotating, removing or invalidating bridge configuration clears old authentication state', () => {
+  for (const bridge of ['http://other-crm.example.test', '', 'http://crm.example.test/path']) {
+    const f = fixture({ env: { AMZGUARD_CRM_BRIDGE_ORIGIN: 'http://crm.example.test' } });
+    const login = f.login(), pending = f.issue();
+    f.env.AMZGUARD_CRM_BRIDGE_ORIGIN = bridge;
+    if (bridge.endsWith('/path')) rejects(() => f.access.publicConfig(), 503, 'CRM_CONFIG_INVALID');
+    else f.access.publicConfig();
+    f.env.AMZGUARD_CRM_BRIDGE_ORIGIN = 'http://crm.example.test';
+    rejects(() => f.access.authenticateSession(login.sessionToken), 401, 'CRM_SESSION_INVALID');
+    rejects(() => f.access.exchangeTicket(pending.ticket, pending.browserToken), 401, 'CRM_TICKET_INVALID');
+  }
+  const f = fixture(); const login = f.login();
+  f.env.AMZGUARD_CRM_BRIDGE_ORIGIN = 'http://crm.example.test';
+  rejects(() => f.access.authenticateSession(login.sessionToken), 401, 'CRM_SESSION_INVALID');
+});

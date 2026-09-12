@@ -25,7 +25,7 @@ const PUBLIC_ROUTES = [
   ['GET', `${API}/stores/{storeKey}/results`],
   ['GET', `${API}/stores/{storeKey}/checks/{checkId}/runs`],
   ['GET', `${API}/stores/{storeKey}/checks/{checkId}/data`],
-  ['GET', '/crm/sso/start'], ['POST', `${API}/sso/tickets`], ['GET', '/crm/sso'],
+  ['GET', '/crm/sso/start'], ['GET', '/crm/sso/bridge'], ['POST', `${API}/sso/tickets`], ['GET', '/crm/sso'],
   ['POST', '/crm/sso/exchange'], ['POST', '/crm/logout'], ['GET', '/crm'], ['GET', '/crm/'], ['GET', '/crm/session'],
 ];
 const STORE_ROWS = [
@@ -703,13 +703,13 @@ test('nine checks across both stores retain complete run/data pagination, uncert
 });
 
 test('HTTP query validation rejects ambiguous pagination and credential transport on every route', async t => {
-  const f = await fixture(t);
+  const f = await fixture(t, { crmOverrides: { AMZGUARD_CRM_BRIDGE_ORIGIN: 'http://crm.example.test' } });
   const login = await f.login();
   const headers = { ...f.bearer, ...f.sameOrigin, Cookie: login.session.cookie };
   for (const [method, route] of PUBLIC_ROUTES) {
     const endpoint = route.replace('{storeKey}', 'US-A').replace('{checkId}', 'reviews');
     await problem(await f.request(`${endpoint}?api_token=PRIVATE_QUERY`, { method, headers, body: method === 'POST' ? '{}' : undefined }), 400, 'CRM_QUERY_CREDENTIAL_REJECTED');
-    const expected = endpoint === '/crm/sso/start' ? 'CRM_INVALID_INPUT'
+    const expected = ['/crm/sso/start', '/crm/sso/bridge'].includes(endpoint) ? 'CRM_INVALID_INPUT'
       : endpoint.startsWith(`${API}/stores`) ? 'INVALID_QUERY' : 'CRM_INVALID_QUERY';
     await problem(await f.request(`${endpoint}?unexpected=1`, { method, headers, body: method === 'POST' ? '{}' : undefined }), 400, expected);
   }
@@ -892,4 +892,160 @@ test('HTTP ticket issuance validates subject and exact destination before a sing
   const context = await success(await f.request('/crm/session', { headers: { Cookie: pair(exchange, SESSION).cookie } }));
   assert.equal(context.data.checkId, null);
   assert.equal(context.data.view, 'results');
+});
+
+function bridgeContext(markup) {
+  const match = /<script type="application\/json" id="crmBridgeContext">([\s\S]*?)<\/script>/.exec(markup);
+  assert.ok(match, 'public bridge context expected');
+  return JSON.parse(match[1]);
+}
+
+async function issueBridge(f, input = {}) {
+  const requestId = crypto.randomBytes(32).toString('base64url');
+  const fields = { storeKey: 'US-A', view: 'data', checkId: 'reviews', requestId, ...input };
+  const started = await f.request(`/crm/sso/bridge?${new URLSearchParams(fields)}`);
+  assert.equal(started.status, 200, await started.clone().text());
+  const markup = await started.text(), context = bridgeContext(markup), binding = pair(started, BINDING);
+  const scope = { storeKey: fields.storeKey, view: fields.view, checkId: fields.checkId ?? null };
+  const body = { ...scope, challengeId: context.challengeId, subject: 'fixture-popup-subject' };
+  const issued = await f.request(`${API}/sso/tickets`, { method: 'POST', headers: { ...f.bearer, ...f.sameOrigin }, body: JSON.stringify(body) });
+  assert.equal(issued.status, 201, await issued.clone().text());
+  const issuedData = (await issued.json()).data;
+  return { started, markup, context, binding, body, loginUrl: issuedData.loginUrl, ticket: issuedData.loginUrl.split('#ticket=')[1] };
+}
+
+test('HTTP popup bridge supports callback-free HTTP CRM with cookie binding, exact CSP and one-store exchange', async t => {
+  const f = await fixture(t, { crmOverrides: { AMZGUARD_CRM_CALLBACK_URL: '', AMZGUARD_CRM_BRIDGE_ORIGIN: 'http://crm.example.test' } });
+  const capability = await success(await f.request(API, { headers: f.bearer }));
+  assert.deepEqual(capability.data.ssoModes, ['popup']);
+  assert.equal(capability.data.ssoAvailable, true);
+  await problem(await f.request('/crm/sso/start?storeKey=US-A&view=results'), 503, 'CRM_SSO_UNAVAILABLE');
+  const issued = await issueBridge(f);
+  secureCookie(issued.binding.header, BINDING, 120);
+  assert.equal(issued.started.headers.get('cross-origin-opener-policy'), 'unsafe-none');
+  assert.equal(issued.started.headers.get('x-frame-options'), 'DENY');
+  assert.equal(issued.started.headers.get('referrer-policy'), 'no-referrer');
+  assert.equal(issued.started.headers.get('cache-control'), 'no-store');
+  for (const response of [await f.request('/crm/sso'), await f.request(API, { headers: f.bearer }), await f.request('/login')]) {
+    assert.notEqual(response.headers.get('cross-origin-opener-policy'), 'unsafe-none', 'bridge exception stays local to bridge');
+  }
+  assert.equal(issued.markup.includes(issued.binding.cookie.split('=')[1]), false);
+  assert.equal(issued.markup.includes(TOKEN), false);
+  const csp = issued.started.headers.get('content-security-policy');
+  assert.match(csp, /frame-ancestors 'none'/);
+  assert.doesNotMatch(csp, /unsafe-inline|unsafe-eval|http:/);
+  const scripts = [...issued.markup.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(match => match[1]);
+  assert.equal(scripts.length, 1);
+  for (const script of scripts) assert.ok(csp.includes(`script-src 'sha256-${crypto.createHash('sha256').update(script).digest('base64')}'`));
+  for (const match of issued.markup.matchAll(/<style>([\s\S]*?)<\/style>/g)) {
+    assert.ok(csp.includes(`style-src 'sha256-${crypto.createHash('sha256').update(match[1]).digest('base64')}'`));
+  }
+  await problem(await f.request('/crm/sso/exchange', { method: 'POST', headers: f.sameOrigin, body: JSON.stringify({ ticket: issued.ticket }) }), 401, 'CRM_TICKET_INVALID');
+  await problem(await f.request('/crm/sso/exchange', { method: 'POST', headers: { ...f.sameOrigin, Cookie: `${BINDING}=${'x'.repeat(43)}` }, body: JSON.stringify({ ticket: issued.ticket }) }), 401, 'CRM_TICKET_INVALID');
+  await problem(await f.request(`${API}/sso/tickets`, { method: 'POST', headers: { ...f.bearer, ...f.sameOrigin }, body: JSON.stringify(issued.body) }), 409, 'CRM_CHALLENGE_USED');
+
+  const posts = [], navigations = [], calls = [];
+  let listener, exchange;
+  const opener = { closed: false, postMessage: (data, origin) => posts.push({ data: JSON.parse(JSON.stringify(data)), origin }) };
+  const window = { opener, addEventListener: (_name, fn) => { listener = fn; }, removeEventListener: () => { listener = null; },
+    location: { replace: url => navigations.push({ url, detached: window.opener === null }) } };
+  window.self = window; window.top = window;
+  const status = { textContent: '' };
+  vm.runInNewContext(scripts[0], { window, document: { getElementById: id => id === 'crmBridgeStatus' ? status : { textContent: JSON.stringify(issued.context) } },
+    AbortController, setTimeout: () => 1, clearTimeout: () => {},
+    fetch: async (url, options) => {
+      calls.push(url);
+      exchange = await f.request(url, { ...options, headers: { ...options.headers, ...f.sameOrigin, Cookie: issued.binding.cookie } });
+      return exchange;
+    } });
+  assert.deepEqual(posts[0], { origin: 'http://crm.example.test', data: { type: 'amzguard:crm:challenge', version: 1,
+    requestId: issued.context.requestId, challengeId: issued.context.challengeId, storeKey: 'US-A', view: 'data', checkId: 'reviews' } });
+  const ticketMessage = { type: 'amzguard:crm:ticket', version: 1, requestId: issued.context.requestId,
+    challengeId: issued.context.challengeId, loginUrl: issued.loginUrl };
+  await listener({ source: {}, origin: 'http://crm.example.test', data: ticketMessage });
+  await listener({ source: opener, origin: 'https://crm.example.test', data: ticketMessage });
+  assert.deepEqual(calls, []);
+  const receive = listener;
+  await receive({ source: opener, origin: 'http://crm.example.test', data: ticketMessage });
+  await receive({ source: opener, origin: 'http://crm.example.test', data: ticketMessage });
+  assert.deepEqual(calls, ['/crm/sso/exchange']);
+  assert.deepEqual(navigations, [{ url: '/crm/', detached: true }]);
+  assert.equal(posts[1].data.type, 'amzguard:crm:complete');
+  const session = pair(exchange, SESSION);
+  secureCookie(session.header, SESSION, 1800);
+  secureCookie(pair(exchange, BINDING).header, BINDING, 0);
+  const authenticated = { Cookie: session.cookie };
+  const context = await success(await f.request('/crm/session', { headers: authenticated }));
+  assert.equal(context.data.storeKey, 'US-A');
+  const stores = await success(await f.request(`${API}/stores`, { headers: authenticated }), { read: true });
+  assert.deepEqual(stores.data.map(store => store.storeKey), ['US-A']);
+  await problem(await f.request(`${API}/stores/US-B/results`, { headers: authenticated }), 404, 'NOT_FOUND');
+  assert.equal((await f.request('/api/status', { headers: authenticated })).status, 401);
+  await problem(await f.request('/crm/sso/exchange', { method: 'POST', headers: { ...f.sameOrigin, Cookie: issued.binding.cookie }, body: JSON.stringify({ ticket: issued.ticket }) }), 401, 'CRM_TICKET_INVALID');
+});
+
+test('HTTP bridge rejects invalid parameters, off-origin requests and altered signing scope', async t => {
+  const f = await fixture(t, { crmOverrides: { AMZGUARD_CRM_BRIDGE_ORIGIN: 'http://crm.example.test' } });
+  const base = '/crm/sso/bridge';
+  const query = 'storeKey=US-A&view=results&requestId=' + 'R'.repeat(43);
+  let ip = 100;
+  for (const [suffix, status, code] of [
+    [`?${query}&requestId=${'S'.repeat(43)}`, 400, 'CRM_DUPLICATE_PARAMETER'],
+    [`?${query}&unknown=1`, 400, 'CRM_INVALID_INPUT'], ['?storeKey=US-A&view=results', 400, 'CRM_INVALID_REQUEST_ID'],
+    ['?storeKey=US-A&view=results&requestId=short', 400, 'CRM_INVALID_REQUEST_ID'],
+    [`?${query}&checkId=intelligence`, 400, 'CRM_INVALID_CHECK'],
+    [`?${query.replace('US-A', 'US-X')}`, 403, 'CRM_STORE_FORBIDDEN'],
+    [`?${query.replace('results', 'admin')}`, 400, 'CRM_INVALID_VIEW'],
+    [`?${query}&openerOrigin=http://evil.example.test`, 400, 'CRM_INVALID_INPUT'],
+    [`?${query}&ticket=PRIVATE_QUERY_TICKET`, 400, 'CRM_QUERY_CREDENTIAL_REJECTED'],
+  ]) await problem(await f.request(base + suffix, { headers: { 'X-Forwarded-For': `192.0.2.${ip++}` } }), status, code);
+  await problem(await f.request(`${base}?${query}`, { headers: { 'X-Forwarded-Proto': 'http' } }), 400, 'CRM_HTTPS_REQUIRED');
+  await problem(await f.request(`${base}?${query}`, { headers: { Host: 'other.example.test' } }), 421, 'CRM_ORIGIN_MISMATCH');
+  const method = await f.request(`${base}?${query}`, { method: 'POST', headers: f.sameOrigin, body: '{}' });
+  assert.equal(method.headers.get('allow'), 'GET');
+  await problem(method, 405, 'CRM_METHOD_NOT_ALLOWED');
+  const started = await f.request(`${base}?${query}`);
+  const context = bridgeContext(await started.text());
+  for (const patch of [{ storeKey: 'US-B' }, { view: 'data' }, { checkId: 'reviews' }]) {
+    await problem(await f.request(`${API}/sso/tickets`, { method: 'POST', headers: { ...f.bearer, ...f.sameOrigin },
+      body: JSON.stringify({ storeKey: 'US-A', view: 'results', subject: 'fixture-user', challengeId: context.challengeId, ...patch }) }), 403, 'CRM_DESTINATION_MISMATCH');
+  }
+  const issued = await f.request(`${API}/sso/tickets`, { method: 'POST', headers: { ...f.bearer, ...f.sameOrigin },
+    body: JSON.stringify({ storeKey: 'US-A', view: 'results', subject: 'fixture-user', challengeId: context.challengeId, checkId: null }) });
+  assert.equal(issued.status, 201, 'rejected scopes must not consume the legitimate challenge');
+});
+
+test('HTTP bridge shares start and browser rate buckets with the existing redirect flow', async t => {
+  const f = await fixture(t, { controlled: true, crmOverrides: { AMZGUARD_CRM_BRIDGE_ORIGIN: 'http://crm.example.test' } });
+  const bridge = '/crm/sso/bridge?storeKey=US-A&view=results&requestId=' + 'R'.repeat(43);
+  for (let index = 0; index < 10; index++) {
+    const response = await f.request(index % 2 ? bridge : '/crm/sso/start?storeKey=US-A&view=results');
+    assert.equal(response.status, index % 2 ? 200 : 303);
+    assert.equal(response.headers.get('x-ratelimit-remaining'), String(9 - index));
+  }
+  const startLimited = await f.request(bridge);
+  assert.equal(startLimited.headers.get('x-ratelimit-limit'), '10');
+  await problem(startLimited, 429, 'CRM_RATE_LIMITED');
+  f.advance(60_000);
+  for (let index = 0; index < 50; index++) assert.equal((await f.request('/crm/sso')).status, 200);
+  for (let index = 0; index < 10; index++) assert.equal((await f.request(bridge)).status, 200);
+  const browserLimited = await f.request('/crm/sso');
+  assert.equal(browserLimited.headers.get('x-ratelimit-limit'), '60');
+  await problem(browserLimited, 429, 'CRM_RATE_LIMITED');
+});
+
+test('HTTP bridge origin changes revoke sessions and outstanding tickets; disabled popup preserves redirect mode', async t => {
+  const f = await fixture(t, { controlled: true, crmOverrides: { AMZGUARD_CRM_BRIDGE_ORIGIN: 'http://crm.example.test' } });
+  const first = await issueBridge(f), pending = await issueBridge(f);
+  const exchanged = await f.request('/crm/sso/exchange', { method: 'POST', headers: { ...f.sameOrigin, Cookie: first.binding.cookie }, body: JSON.stringify({ ticket: first.ticket }) });
+  const session = pair(exchanged, SESSION);
+  f.configureCrm({ ...f.crmEnv, AMZGUARD_CRM_BRIDGE_ORIGIN: 'http://other-crm.example.test' });
+  await problem(await f.request('/crm/session', { headers: { Cookie: session.cookie } }), 401, 'CRM_SESSION_INVALID');
+  await problem(await f.request('/crm/sso/exchange', { method: 'POST', headers: { ...f.sameOrigin, Cookie: pending.binding.cookie }, body: JSON.stringify({ ticket: pending.ticket }) }), 401, 'CRM_TICKET_INVALID');
+  f.configureCrm({ ...f.crmEnv, AMZGUARD_CRM_BRIDGE_ORIGIN: '' });
+  const capability = await success(await f.request(API, { headers: f.bearer }));
+  assert.deepEqual(capability.data.ssoModes, ['redirect']);
+  assert.equal(capability.data.ssoAvailable, true);
+  await problem(await f.request('/crm/sso/bridge?storeKey=US-A&view=results&requestId=' + 'R'.repeat(43)), 503, 'CRM_BRIDGE_UNAVAILABLE');
+  assert.equal((await f.request('/crm/sso/start?storeKey=US-A&view=results')).status, 303);
 });

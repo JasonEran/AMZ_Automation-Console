@@ -32,7 +32,7 @@ Accept: application/json
 
 | 请求 | 返回内容 |
 |---|---|
-| `GET /api/crm/v1` | 当前授权店铺、检查目录 `data.checks`、数据过期阈值、`ssoAvailable` |
+| `GET /api/crm/v1` | 当前授权店铺、检查目录 `data.checks`、数据过期阈值、`ssoAvailable/ssoModes` |
 | `GET /api/crm/v1/stores` | 当前可读取的店铺列表；每店包含 `storeKey`、`storeName`、`market` |
 
 **用 `storeKey` 建立 CRM 店铺映射。** CRM 的店铺 `id` 与它不是同一个标识，不能直接互换，也不要按展示名称匹配。CRM 后端向用户提供数据前，仍需检查该用户在 CRM 中的店铺权限。
@@ -41,7 +41,7 @@ Accept: application/json
 
 ### 最小调用示例
 
-以下代码在 CRM 后端运行，使用支持 `fetch` 和 `AbortSignal.timeout` 的 Node.js。`storeKey` 取自上一步建立的授权映射；`US-DEMO` 只是示例值。
+接口使用标准 HTTPS、Bearer 和 JSON，PHP / Laravel 可直接调用，无需在 CRM 安装 Node.js。以下 JavaScript 仅演示 HTTP 请求及响应读取，`storeKey` 取自已授权映射；`US-DEMO` 只是示例值。
 
 ```js
 const origin = 'https://amzcheck.pc51.com';
@@ -275,13 +275,73 @@ if (latestRun) {
 
 ## 5. 免密跳转（可选）
 
-这一部分用于在 CRM 添加“打开监测详情”按钮。只做后端取数时可以跳过。
+这一部分用于 CRM 的“打开监测详情”入口，只做后端取数时可以跳过。监测站提供两种模式：
 
-CRM 主页面可以继续使用 HTTP，通过普通链接发起跳转；用户打开的监测页面和后续取数仍使用 HTTPS，无需把 API Token 放到 CRM 网页中。
+| 模式 | 监测站入口 | 接入条件 |
+|---|---|---|
+| 弹窗 | `GET /crm/sso/bridge` | 适合现有 HTTP、Bearer 登录的 CRM 页面；监测站配置精确的 CRM origin |
+| 重定向 | `GET /crm/sso/start` | CRM 已有可识别当前用户的有效 HTTPS 回调 |
 
-**接入前先由 CRM 实现一个固定的 HTTPS 回调地址，并交给监测站运维配置。** 回调未配置时，能力接口返回 `ssoAvailable=false`，开始跳转返回 503。回调必须实现下文的用户和店铺权限校验，普通 CRM 页面地址不能直接作为回调。
+能力接口的 `ssoModes` 返回已配置模式：`popup` 或 `redirect`；旧部署可能没有该字段，不应据此假定支持弹窗。`ssoAvailable=true` 只说明监测站至少配置了一种模式，不证明 CRM 侧已经完成接入。两种模式均由 CRM 后端验证真实用户和店铺权限，再调用同一个签票接口；CRM 前端不持有监测站 API Token。
 
-### 按钮链接
+### 弹窗模式：适配现有 HTTP CRM 页面
+
+入口参数：
+
+```http
+GET /crm/sso/bridge?storeKey=US-DEMO&view=results&requestId=CLIENT_REQUEST_ID
+```
+
+| 参数 | 说明 |
+|---|---|
+| `storeKey` | 必填，目标店铺的监测站 key |
+| `view` | 必填，`results` 或 `data` |
+| `checkId` | 可选，九项检查中的一个标识 |
+| `requestId` | 必填，CRM 页面为本次打开生成的 32 字节随机数，编码为 43 字符 base64url；只用于关联窗口，不是用户身份 |
+
+先注册 `message` 监听，再在用户点击时同步通过 `window.open` 打开入口。不能先等待异步请求，也不能添加会切断 opener 的 `noopener/noreferrer`；监测窗口只发送一次握手消息，监听注册过晚会错过它。HTTP 页面生成关联值可使用 `crypto.getRandomValues`；不要依赖只在安全上下文可用的 `crypto.randomUUID`。
+
+监测窗口设置 120 秒的 Secure、HttpOnly 绑定 Cookie，只向配置的 CRM origin 发送以下消息：
+
+```json
+{
+  "type": "amzguard:crm:challenge",
+  "version": 1,
+  "requestId": "<CLIENT_REQUEST_ID>",
+  "challengeId": "<MONITOR_CHALLENGE_ID>",
+  "storeKey": "US-DEMO",
+  "view": "results",
+  "checkId": null
+}
+```
+
+CRM 页面应同时核对 `event.origin` 是监测站 origin、`event.source` 是本次打开的窗口、`requestId` 和目标店铺/页面与本次操作一致，再让自己的后端签票。不要仅收到同名消息就发起签票，也不要接受消息中的用户身份或角色。CRM 现有 Bearer 留在原有的 CRM 请求链路中，不传给监测站或放入窗口消息。
+
+后端签票返回 201 后，CRM 页面只向原监测窗口的精确 origin 发送：
+
+```json
+{
+  "type": "amzguard:crm:ticket",
+  "version": 1,
+  "requestId": "<CLIENT_REQUEST_ID>",
+  "challengeId": "<MONITOR_CHALLENGE_ID>",
+  "loginUrl": "https://amzcheck.pc51.com/crm/sso#ticket=<ONE_TIME_TICKET>"
+}
+```
+
+监测窗口校验 origin、opener、关联值、握手和固定 `loginUrl`，自行在 HTTPS 同源兑换。成功后发送 `{type:'amzguard:crm:complete',version:1,requestId,challengeId}`，断开 opener，再进入 `/crm/`。收到签票响应不等于浏览器已登录，应以这条完成消息为准。
+
+CRM 鉴权或签票失败时，可发送 `{type:'amzguard:crm:error',version:1,requestId,challengeId}` 结束握手；不要附加原始错误、身份或凭据。消息只接受上述精确字段，不能用 `*` 作为 `postMessage` 的目标 origin。错误来源、窗口或关联值会被忽略，重复票据消息不会再次兑换。
+
+当前 CRM 的请求封装会重试部分网络/429/502/503/504 错误。**签票必须关闭自动重试**；超时或响应丢失后，由用户重新开始握手。当前绑定 Cookie 为浏览器共用，一次只完成一个握手；多个标签同时打开可能使较早窗口的绑定失效。窗口关闭、超时、没有 opener 时都不会放行。
+
+若 CRM 或代理强制 `Cross-Origin-Opener-Policy: same-origin`，窗口关系可能被切断；接入页需使用可保留弹窗关系的策略。监测站只在 bridge 页采用 `unsafe-none`，成功后立即断开 opener。HTTP CRM 页面及其既有登录请求仍有 HTTP 的传输限制，本接口不会改变 CRM 的协议；监测站 API、绑定 Cookie 和兑换始终要求 HTTPS。
+
+### 重定向模式
+
+CRM 主页面可以通过普通链接进入监测站，但必须先实现有效的 HTTPS 回调并交给监测站配置。回调未配置时，`/crm/sso/start` 返回 503；弹窗模式可用也不会自动改走另一流程。普通 CRM 页面地址不能直接作为回调，HTTP 页面的 localStorage Token 不会随导航自动带到 HTTPS 回调。
+
+### 重定向链接
 
 使用普通顶层链接，不嵌入 iframe，也不在链接里放认证令牌：
 
@@ -322,39 +382,7 @@ HTTP CRM 页面也可使用下面的按钮。`US-DEMO` 须由 CRM 按当前用�
 
 `subject` 使用 CRM 内部稳定、不含个人信息的用户标识，长度 1–128 字符，不含首尾空白或控制字符。POST 使用 `Content-Type: application/json`，正文不超过 8192 字节，不接受压缩正文或未知字段。
 
-### 回调处理器（Node.js）
-
-仓库提供 [callback-adapter.js](../src/crm/callback-adapter.js)，供 CRM 的 Node.js 22+ 后端使用。复制组件时，同时保留它引用的 [checks/registry.js](../src/checks/registry.js) 及两者的相对目录。组件负责校验回调参数、向监测站签票和返回跳转响应。把它挂载到 CRM 的实际 HTTPS 回调路由；输入、输出分别是标准 `Request` 和 `Response`，框架层负责转换。
-
-CRM 需要提供两个鉴权函数：
-
-| 函数 | 要做什么 |
-|---|---|
-| `identifyUser(request, {signal, requestId})` | 验证真实 CRM 登录态，返回普通对象，其自身字段 `subject` 是稳定的用户标识；未登录返回 `null` |
-| `authorizeStore(identity, storeKey, {signal, requestId})` | 按 CRM 用户权限和店铺映射判断访问权；只有返回严格的 `true` 才允许签票 |
-
-两个函数都必须提供。用户标识不从回调 query 中读取，也不能按店铺名称猜测权限。鉴权过程应响应 `signal`，在请求取消或超时时停止处理。
-
-将这两个已实现的函数传入处理器：
-
-```js
-import { createCrmCallbackHandler } from './src/crm/callback-adapter.js';
-
-const handleCallback = createCrmCallbackHandler({
-  callbackUrl: process.env.CRM_MONITOR_CALLBACK_URL,
-  monitorOrigin: 'https://amzcheck.pc51.com',
-  apiToken: process.env.AMZGUARD_CRM_API_TOKEN,
-  identifyUser,
-  authorizeStore,
-});
-// 在 CRM 对应路由中调用 await handleCallback(request)，将 Response 返回给浏览器。
-```
-
-`CRM_MONITOR_CALLBACK_URL` 是 CRM 后端自己的配置项，值须与监测站的 `AMZGUARD_CRM_CALLBACK_URL` 一致。处理器默认总超时 5 秒，覆盖两次鉴权、签票和响应读取，可通过 `timeoutMs` 配置为 1–30000 毫秒；只发送协议需要的 `subject` 与握手目的地，不转发 CRM Cookie 或浏览器 Authorization。
-
-回调失败时返回 `application/problem+json`，错误码以 `CRM_CALLBACK_` 开头，并带有 `requestId`。401 表示用户未登录，403 表示没有店铺权限，503 表示 CRM 鉴权不可用，502 表示签票请求失败或响应不合约定。408 表示请求取消，504 表示超时；处理器不会自动重试签票，用户需从 CRM 重新开始握手。
-
-这个组件不包含 CRM 的用户数据库、登录入口或店铺权限实现。部署组件、接好两个鉴权函数，再用真实 CRM 用户完成联调后，才算接通免密登录。未登录时先走 CRM 原有登录流程，随后重新开始监测站握手。
+已有 [Node.js 回调组件](../src/crm/callback-adapter.js) 仅供 Node.js 22+ 调用方参考，不是现有 Laravel CRM 必须安装的依赖。接口本身不限制后端语言；本文约定监测站的入口、签票和消息协议，CRM 侧接入由其开发者完成。
 
 HTTP 来源页面不会放宽后续校验：回调证书必须覆盖回调域名，签票只由 CRM 后端完成，票据只在发起跳转的浏览器中兑换。若回调出现证书错误，应由 CRM 维护人员修正证书配置，不关闭 TLS 校验或改用 HTTP 回调。
 
@@ -368,7 +396,7 @@ HTTP 来源页面不会放宽后续校验：回调证书必须覆盖回调域名
 | CRM 退出或撤销用户权限 | 不会主动撤销已签发的监测会话；该会话最长继续有效至 30 分钟到期。再次进入时由 CRM 重新鉴权；监测站停用店铺或撤销客户端店铺授权则立即阻止读取 |
 | 重启或 CRM 入站认证配置变化 | 内存中的握手、票据和会话失效；修改店铺展示名或页面设置不会清空会话。当前实现为单进程，不能任意分发到多个实例 |
 
-`loginUrl` 固定指向监测站的 `/crm/sso#ticket=...`。CRM 不要记录这个值或拼接任意 `returnUrl`。监测站完成页会先清除 fragment，再同源 POST 兑换票据。
+`loginUrl` 固定指向监测站的 `/crm/sso#ticket=...`。CRM 不要记录这个值或拼接任意 `returnUrl`。重定向完成页先清除 fragment；弹窗方式在内存中提取票据，两种方式都由监测页面同源 POST 兑换。
 
 浏览器使用独立的只读 Cookie，不能调用原 Dashboard API；普通 Dashboard Cookie 也不能读取 CRM 接口。取数 API 同时收到 Authorization 和 Cookie 时，以 Authorization 为准，错误 Bearer 不会回退到 Cookie。`/crm`、`/crm/` 和 `/crm/session` 只认 CRM Cookie。Bearer 使用 HTTPS 请求头传递（[RFC 6750](https://www.rfc-editor.org/rfc/rfc6750)）；这里的免密握手是本项目协议，不是 OAuth/OIDC。
 
@@ -384,9 +412,10 @@ HTTP 来源页面不会放宽后续校验：回调证书必须覆盖回调域名
 | `AMZGUARD_CRM_API_TOKEN` | 新生成的后端专用随机令牌，32–512 字符 |
 | `AMZGUARD_CRM_STORE_KEYS` | 允许读取的确切店铺 key，逗号分隔、不重复，不支持 `*`；每个 key 与客户端标识使用相同字符规则 |
 | `AMZGUARD_CRM_PUBLIC_ORIGIN` | `https://amzcheck.pc51.com` 这样的 HTTPS origin；不含路径、query、fragment、用户名或密码 |
-| `AMZGUARD_CRM_CALLBACK_URL` | CRM 已实现的固定 HTTPS 回调 URL；不含 query、fragment、用户名或密码。暂不接免密时留空 |
+| `AMZGUARD_CRM_CALLBACK_URL` | 重定向模式的固定 HTTPS 回调 URL；不含 query、fragment、用户名或密码。仅接弹窗时留空 |
+| `AMZGUARD_CRM_BRIDGE_ORIGIN` | 弹窗模式唯一允许的 CRM 来源，例如 `http://amzcrm.pc51.com`；使用浏览器 `URL.origin` 的规范值，不能等于监测站 origin，不含路径、尾斜杠、query、fragment、用户名或密码，不接受 `*`。默认留空关闭弹窗 |
 
-五项全空表示关闭；启用时前四项必须配齐，部分配置无效会拒绝启动。回调留空不影响后端取数。
+六项全空表示关闭；启用时前四项必须配齐，部分配置无效会拒绝启动。最后两项分别启用重定向和弹窗，都留空时仍可后端取数。现有 HTTP CRM 可配置精确的 `AMZGUARD_CRM_BRIDGE_ORIGIN`，不需要放宽 HTTPS 回调规则。
 
 在现有 env 文件中补充配置，修改后重启 Dashboard，再核对能力接口和授权店铺列表。不要重跑初始化器覆盖生产文件，也无需启动巡检或通知。发布与回滚见 [部署说明](../DEPLOY.md)。
 
@@ -394,7 +423,7 @@ HTTP 来源页面不会放宽后续校验：回调证书必须覆盖回调域名
 
 ### 现有 CRM 的对接备注
 
-2026-09-12 曾只读核对已登录的 SellerMaking 页面（入口 `http://amzcrm.pc51.com/analysis/dashboard`）：其前端使用 `/api` 前缀和 Bearer 认证；GET `/api/auth/me` 返回 `code/msg/data`，用户字段有 `id/username/name/role/seller_id/permissions`；GET `/api/shops` 返回列表 `data` 和数量 `count`。当时未核实可用的 HTTPS 免密回调。
+2026-09-12 曾只读核对已登录的 SellerMaking 页面（入口 `http://amzcrm.pc51.com/analysis/dashboard`）：公开静态资源确认 Vue 3.5.34、Vue Router 4.6.4、Pinia 2.3.1、Element Plus 2.14.0 和 Vite 构建标识；API 异常响应确认后端为 PHP / Laravel，但未暴露这两者的准确版本。其前端使用 `/api` 前缀和 Bearer 认证；GET `/api/auth/me` 返回 `code/msg/data`，用户字段有 `id/username/name/role/seller_id/permissions`；GET `/api/shops` 返回列表 `data` 和数量 `count`。用户 Token 来自 `localStorage.token`，请求封装默认重试部分失败两次。未核实已有免密回调或签票代理，不能据公开页面推断 CRM 的内部 guard、用户模型及店铺授权实现。
 
 这些记录仅供 CRM 开发者定位现有用户与店铺逻辑，不作为 CRM 的稳定接口契约。页面还存在 POST 查询和设置保存逻辑，不能按方法名判断副作用；该次核对未调用新增、编辑、删除、同步或导入接口。原有出站导出与推送另见 [CRM 兼容导出](CRM_EXPORT_COMPATIBILITY.md)。
 
