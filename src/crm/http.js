@@ -7,6 +7,7 @@ import {
   CRM_PORTAL_HTML, CRM_PORTAL_SCRIPT, CRM_PORTAL_STYLE,
   CRM_SSO_HTML, CRM_SSO_SCRIPT,
 } from '../web/crm-portal.js';
+import { CRM_BRIDGE_SCRIPT, CRM_BRIDGE_STYLE, renderCrmBridge } from '../web/crm-bridge.js';
 
 const API = '/api/crm/v1';
 const SESSION_COOKIE = '__Host-amzguard_crm';
@@ -49,10 +50,10 @@ function send(res, status, body, type = 'application/json; charset=utf-8') {
   res.end(content);
 }
 
-function html(res, body, script) {
+function html(res, body, script, style = CRM_PORTAL_STYLE) {
   res.setHeader('Content-Security-Policy', [
     "default-src 'none'", `script-src 'sha256-${hash(script)}'`,
-    `style-src 'sha256-${hash(CRM_PORTAL_STYLE)}'`, "connect-src 'self'",
+    `style-src 'sha256-${hash(style)}'`, "connect-src 'self'",
     "base-uri 'none'", "frame-ancestors 'none'", "form-action 'none'",
   ].join('; '));
   send(res, 200, body, 'text/html; charset=utf-8');
@@ -175,11 +176,19 @@ export function createCrmHttp({ outDir, stores, staleAfterMs, env = process.env,
           throw error(400, 'CRM_QUERY_CREDENTIAL_REJECTED', 'Credentials must not appear in the query string');
         }
       }
-      if (p === '/crm/sso/start') {
+      if (p === '/crm/sso/start' || p === '/crm/sso/bridge') {
         method(req, res, 'GET'); limit(req, res, 'start', 10);
         const fields = Object.fromEntries(url.searchParams);
         if ([...url.searchParams.keys()].length !== Object.keys(fields).length) {
           throw error(400, 'CRM_DUPLICATE_PARAMETER', 'Duplicate query parameter');
+        }
+        if (p === '/crm/sso/bridge') {
+          const started = access.beginBridge(fields);
+          res.setHeader('Set-Cookie', cookie(BINDING_COOKIE, started.browserToken, 120));
+          // Only this purpose-built popup keeps its cross-origin opener. Other
+          // pages retain their own headers and never receive this exception.
+          res.setHeader('Cross-Origin-Opener-Policy', 'unsafe-none');
+          html(res, renderCrmBridge(started), CRM_BRIDGE_SCRIPT, CRM_BRIDGE_STYLE); return true;
         }
         const started = access.beginChallenge(fields);
         res.writeHead(303, { Location: started.callbackUrl,
@@ -237,7 +246,7 @@ export function createCrmHttp({ outDir, stores, staleAfterMs, env = process.env,
         } else success(200, { data: { version: API_VERSION, readOnly: true, storeKeys,
           resourceClasses: ['results', 'data'], intelligenceIncluded: false,
           checks: CHECKS.map(({ id, no, title, scope }) => ({ id, no, title, scope })),
-          ssoAvailable: settings.ssoAvailable, ticketTtlSeconds: 60, sessionTtlSeconds: 1800,
+          ssoAvailable: settings.ssoAvailable, ssoModes: settings.ssoModes, ticketTtlSeconds: 60, sessionTtlSeconds: 1800,
           staleAfterHours: staleAfterMs / 3_600_000 } });
         return true;
       }

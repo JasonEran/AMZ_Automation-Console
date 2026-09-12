@@ -57,6 +57,17 @@ function httpsUrl(value, originOnly = false) {
   return originOnly ? url.origin : url.href;
 }
 
+function bridgeOrigin(value, publicOrigin) {
+  let url;
+  try { url = new URL(value); } catch { /* reject below */ }
+  if (!url || /[\s\\*]/u.test(value) || !['http:', 'https:'].includes(url.protocol)
+    || url.username || url.password || url.search || url.hash || value !== url.origin
+    || url.origin === publicOrigin) {
+    throw failure(503, 'CRM_CONFIG_INVALID', 'CRM bridge must use one exact external HTTP or HTTPS origin');
+  }
+  return url.origin;
+}
+
 /**
  * Independent, read-only CRM authentication. No filesystem, network, local user
  * store, Dashboard role, or Amazon operation is used by this module.
@@ -98,12 +109,13 @@ export function createCrmAccess({ env = process.env, stores = [], now = Date.now
   function readSettings() {
     const values = CORE_KEYS.map((key) => env[`${PREFIX}${key}`] || '');
     const callback = env[`${PREFIX}CALLBACK_URL`] || '';
-    if ([...values, callback].some((value) => typeof value !== 'string')) {
+    const bridge = env[`${PREFIX}BRIDGE_ORIGIN`] === undefined ? '' : env[`${PREFIX}BRIDGE_ORIGIN`];
+    if ([...values, callback, bridge].some((value) => typeof value !== 'string')) {
       throw failure(503, 'CRM_CONFIG_INVALID', 'Invalid CRM configuration');
     }
-    if (!values.some(Boolean) && !callback) {
+    if (!values.some(Boolean) && !callback && !bridge) {
       challenges.clear(); tickets.clear(); sessions.clear(); priorVersion = null;
-      return { enabled: false, storeKeys: [], ssoAvailable: false };
+      return { enabled: false, storeKeys: [], ssoAvailable: false, ssoModes: [] };
     }
     const [clientId, apiToken, storeList, origin] = values;
     if (!IDENTIFIER_RE.test(clientId) || apiToken.length < 32 || apiToken.length > 512
@@ -117,11 +129,14 @@ export function createCrmAccess({ env = process.env, stores = [], now = Date.now
     }
     const publicOrigin = httpsUrl(origin, true);
     const callbackUrl = callback ? httpsUrl(callback) : null;
-    const version = digest(JSON.stringify([clientId, apiToken, storeKeys, publicOrigin, callbackUrl]));
+    const configuredBridgeOrigin = bridge ? bridgeOrigin(bridge, publicOrigin) : null;
+    const ssoModes = [...(callbackUrl ? ['redirect'] : []), ...(configuredBridgeOrigin ? ['popup'] : [])];
+    const version = digest(JSON.stringify([clientId, apiToken, storeKeys, publicOrigin, callbackUrl, configuredBridgeOrigin]));
     if (priorVersion !== version) {
       challenges.clear(); tickets.clear(); sessions.clear(); priorVersion = version;
     }
-    return { enabled: true, clientId, apiToken, storeKeys, publicOrigin, callbackUrl, ssoAvailable: Boolean(callbackUrl), version };
+    return { enabled: true, clientId, apiToken, storeKeys, publicOrigin, callbackUrl,
+      bridgeOrigin: configuredBridgeOrigin, ssoAvailable: ssoModes.length > 0, ssoModes, version };
   }
 
   function settings() {
@@ -180,6 +195,19 @@ export function createCrmAccess({ env = process.env, stores = [], now = Date.now
     return meta;
   }
 
+  function begin(config, input) {
+    strictObject(input, ['storeKey', 'checkId', 'view']);
+    const scope = destination(input);
+    checkStore(config, scope.storeKey);
+    const time = clock();
+    prune(time); available(challenges, 'challenges');
+    const challengeId = crypto.randomBytes(32).toString('base64url');
+    const browserToken = crypto.randomBytes(32).toString('base64url');
+    const expiresAt = time + CHALLENGE_TTL_MS;
+    challenges.set(digest(challengeId), { browserHash: digest(browserToken), scope, expiresAt, issued: false });
+    return { challengeId, browserToken, expiresAt, scope };
+  }
+
   // Validate partial configuration immediately, while preserving disabled mode.
   settings();
 
@@ -193,7 +221,7 @@ export function createCrmAccess({ env = process.env, stores = [], now = Date.now
         try { checkStore(config, key); return true; } catch { return false; }
       }) : [];
       return {
-        enabled: config.enabled, ssoAvailable: config.ssoAvailable,
+        enabled: config.enabled, ssoAvailable: config.ssoAvailable, ssoModes: [...config.ssoModes],
         clientId: config.clientId || null, publicOrigin: config.publicOrigin || null,
         storeKeys: active, challengeTtlSeconds: 120, ticketTtlSeconds: 60, sessionTtlSeconds: 1800,
       };
@@ -226,15 +254,7 @@ export function createCrmAccess({ env = process.env, stores = [], now = Date.now
     beginChallenge(input) {
       const config = requireEnabled();
       if (!config.callbackUrl) throw failure(503, 'CRM_SSO_UNAVAILABLE', 'CRM HTTPS callback is not configured');
-      strictObject(input, ['storeKey', 'checkId', 'view']);
-      const scope = destination(input);
-      checkStore(config, scope.storeKey);
-      const time = clock();
-      prune(time); available(challenges, 'challenges');
-      const challengeId = crypto.randomBytes(32).toString('base64url');
-      const browserToken = crypto.randomBytes(32).toString('base64url');
-      const expiresAt = time + CHALLENGE_TTL_MS;
-      challenges.set(digest(challengeId), { browserHash: digest(browserToken), scope, expiresAt, issued: false });
+      const { scope, challengeId, browserToken, expiresAt } = begin(config, input);
       const callbackUrl = new URL(config.callbackUrl);
       callbackUrl.searchParams.set('challengeId', challengeId);
       // Navigation hints only: CRM must independently authorize its signed-in
@@ -243,6 +263,19 @@ export function createCrmAccess({ env = process.env, stores = [], now = Date.now
       callbackUrl.searchParams.set('view', scope.view);
       if (scope.checkId !== null) callbackUrl.searchParams.set('checkId', scope.checkId);
       return { challengeId, browserToken, callbackUrl: callbackUrl.href, expiresAt };
+    },
+
+    /** Popup correlation is public transport metadata, never ticket scope or authentication. */
+    beginBridge(input) {
+      const config = requireEnabled();
+      if (!config.bridgeOrigin) throw failure(503, 'CRM_BRIDGE_UNAVAILABLE', 'CRM popup bridge is not configured');
+      strictObject(input, ['storeKey', 'checkId', 'view', 'requestId']);
+      if (typeof input.requestId !== 'string' || !TOKEN_RE.test(input.requestId)) {
+        throw failure(400, 'CRM_INVALID_REQUEST_ID', 'A valid popup requestId is required');
+      }
+      const { scope, ...started } = begin(config, { storeKey: input.storeKey, checkId: input.checkId, view: input.view });
+      return { ...started, ...scope, requestId: input.requestId,
+        bridgeOrigin: config.bridgeOrigin, publicOrigin: config.publicOrigin };
     },
 
     /** Only an authenticated machine principal can assert the CRM subject and issue a ticket. */

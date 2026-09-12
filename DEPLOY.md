@@ -177,7 +177,7 @@ sudo sh /opt/amzguard/deploy/migrate-env-layout.sh
 
 商品上传从关闭切换为启用前，必须先完成：安装并更新 ClamAV 签名、用只读探针经对应紫鸟确认精确页面与唯一控件结构、离线回归全通过、确认待处理目录没有历史队列、再把双闸同时改为 `1`。启用只允许工作者消费 Dashboard 逐任务确认生成的队列；不得手工创建 queue marker 或直接运行带文件参数的脚本。真机提交必须使用业务批准的真实模板，禁止为测试制造虚假商品数据。
 
-CRM 入站只读 API 使用 `dashboard.env` 的独立 `AMZGUARD_CRM_*` 配置，不复用上述出站 `CRM_ENDPOINT/CRM_TOKEN`，也不影响 `AMZGUARD_CRM_CONFIGURED` readiness hint。变量要求、关闭方式和 HTTPS 回调启用条件集中在 [CRM API 配置](docs/CRM_API.md#6-监测站配置)。更新现有服务时保留 env、运行数据与实际 timer 状态，只发布经过验证的文件并重启 Dashboard；不要为添加这些变量重跑初始化器或安装器。浏览器免密状态保存在内存，Dashboard 重启后需要从 CRM 重新进入。
+CRM 入站只读 API 使用 `dashboard.env` 的独立 `AMZGUARD_CRM_*` 配置，不复用上述出站 `CRM_ENDPOINT/CRM_TOKEN`，也不影响 `AMZGUARD_CRM_CONFIGURED` readiness hint。变量要求、关闭方式及弹窗/HTTPS 回调两种免密模式的启用条件集中在 [CRM API 配置](docs/CRM_API.md#6-监测站配置)。更新现有服务时保留 env、运行数据与实际 timer 状态，只发布经过验证的文件并重启 Dashboard；不要为添加这些变量重跑初始化器或安装器。浏览器免密状态保存在内存，Dashboard 重启后需要从 CRM 重新进入。
 
 前端店铺配置写入 `out/runtime/store-registry.json`，显示配置写入 `out/runtime/ui-config.json`，沿用 Dashboard 的 `out/` 写权限，无需放宽只读代码或 `config/` 目录。首次保存后的管理文件优先于 bootstrap；发布及回滚不得覆盖或删除它们，备份包含这两项和既有广告/用户配置。配置功能同时修改 CLI 加载器，发布前应确认采集/上传工作者空闲，并保留现有 timer/path 状态；保存店铺不触发采集。操作与管理 API 见 [配置管理](docs/OPERATIONS.md#店铺与页面配置)。
 
