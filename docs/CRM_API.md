@@ -1,90 +1,66 @@
-# CRM 店铺监测 API 接入文档
+# CRM 店铺监测 API 接入说明
 
-服务地址：`https://amzcheck.pc51.com`
+这份说明供 CRM 开发者接入店铺监测。拿到本文、同目录的 `crm-openapi.json` 和单独交付的 API Token 后，就可以开始开发；无需安装监测站程序或 Node.js。
 
-接口前缀：`/api/crm/v1`，响应版本：`1.0`
-
-CRM 后端通过这组接口读取九项店铺监测数据，主要有两种用法：
-
-| CRM 要做什么 | 使用哪个接口 |
+| 接入信息 | 值 |
 |---|---|
-| 在店铺页面显示最新检查结论、异常和采集时间 | `results`：探测结果 |
-| 获取某次检查保存的评价、ASIN、VOC 等明细 | `runs` 选择批次，再用 `data` 分页读取 |
+| 服务地址 | `https://amzcheck.pc51.com` |
+| API 前缀 / 响应版本 | `/api/crm/v1` / `1.0` |
+| 后端认证 | `Authorization: Bearer <API_TOKEN>` |
+| 当前 CRM 来源 | `http://amzcrm.pc51.com` |
+| 当前免密方式 | 弹窗 `popup`，入口 `/crm/sso/bridge` |
+| 当前授权店铺 key | `XCAI`、`LUPING`、`JUNJUN`、`chen-rui`、`FENG`、`WANG` |
 
-接口读取监测站**已经保存的数据**，调用不会触发 Amazon 采集，也不会向 CRM 写入数据。本期不提供竞品情报、补跑、上传或店铺管理接口。CRM 若要增加“打开监测详情”按钮，可再接入[免密跳转](#5-免密跳转可选)，后端取数不依赖这一步。
+以上接入状态于 **2026-09-12** 核对。开发时通过能力和店铺接口读取最新配置，不把这份名单写死在页面中。重定向方式的 HTTPS 回调目前未配置，不要使用 `/crm/sso/start` 作为现有 CRM 的入口。
 
-完整字段和类型见 [OpenAPI 文档](crm-openapi.json)。也可携带下文的 Bearer 令牌请求 `GET /api/crm/v1/openapi.json` 获取在线版本。
+本期提供两类数据：**`results` 是检查结论，`data` 是某次检查保存的明细**。读取不会触发 Amazon 采集，也不会向 CRM 写入业务数据；不包含竞品情报、补跑、上传或店铺管理接口。
+
+先完成第 1～4 节的后端取数，再按第 5 节接“查看监测详情”按钮。完整字段、类型和错误码查阅 [OpenAPI 规范](crm-openapi.json)；也可带 Token 请求 `GET /api/crm/v1/openapi.json` 获取线上版本。
 
 ## 1. 先接通一个店铺
 
-### 准备令牌和店铺映射
+### Token 与店铺映射
 
-向监测站运维取得后端专用令牌，每次请求带上：
+API Token 只放在 CRM 后端环境变量或密钥管理系统中，不下发网页，也不放进 URL、源码或日志。它与 CRM 用户登录 Token、监测站管理员密码均不通用。
 
-```http
-Authorization: Bearer <CRM_BACKEND_TOKEN>
-Accept: application/json
-```
+先调用：
 
-令牌只保存在 CRM 后端的环境变量或密钥管理系统中，不下发到网页，不放在 URL、源码、工单或日志里。它与 CRM 登录 Token、Dashboard 密码、Session Secret、ingest token、出站 `CRM_TOKEN` 都不通用。请求使用上面的 HTTPS 服务地址；接口不支持网页跨域直连。
-
-接入时先调用这两个接口：
-
-| 请求 | 返回内容 |
+| 请求 | 用途 |
 |---|---|
-| `GET /api/crm/v1` | 当前授权店铺、检查目录 `data.checks`、数据过期阈值、`ssoAvailable/ssoModes` |
-| `GET /api/crm/v1/stores` | 当前可读取的店铺列表；每店包含 `storeKey`、`storeName`、`market` |
+| `GET /api/crm/v1` | 读取授权店铺、九项检查目录 `data.checks`、过期阈值和 `ssoModes` |
+| `GET /api/crm/v1/stores` | 读取店铺数组，每店有 `storeKey`、`storeName`、`market` |
 
-**用 `storeKey` 建立 CRM 店铺映射。** CRM 的店铺 `id` 与它不是同一个标识，不能直接互换，也不要按展示名称匹配。CRM 后端向用户提供数据前，仍需检查该用户在 CRM 中的店铺权限。
+CRM 内部店铺 ID 与监测站的 `storeKey` 是两套标识，需建立明确映射，不能直接互换或仅凭展示名称匹配。每次向 CRM 用户提供数据或签发免密票据前，CRM 后端都要检查该用户的店铺权限。
 
-店铺列表只返回当前令牌获准访问且已启用的店铺。店铺停用后不再可读；新增店铺需要运维另行授权，展示名称变化不影响 `storeKey`。
+接口只返回当前 Token 获准访问且已启用的店铺。新增店铺需另行授权；停用后不可读取；改展示名称不改变 `storeKey`。
 
-### 最小调用示例
+### 第一个请求
 
-接口使用标准 HTTPS、Bearer 和 JSON，PHP / Laravel 可直接调用，无需在 CRM 安装 Node.js。以下 JavaScript 仅演示 HTTP 请求及响应读取，`storeKey` 取自已授权映射；`US-DEMO` 只是示例值。
+将单独交付的 Token 配入 CRM 后端环境变量 `AMZGUARD_CRM_API_TOKEN` 后，可在该服务器验证：
 
-```js
-const origin = 'https://amzcheck.pc51.com';
-const token = process.env.AMZGUARD_CRM_API_TOKEN;
-if (!token) throw new Error('Missing CRM backend credential');
-
-async function read(path) {
-  const response = await fetch(origin + path, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-    signal: AbortSignal.timeout(15000),
-  });
-  const body = await response.json();
-  if (!response.ok) {
-    // 按 HTTP 状态和 code 处理；日志只记录错误码与 requestId。
-    throw Object.assign(new Error(`AMZ API ${response.status}`), {
-      status: response.status,
-      code: body.code,
-      requestId: response.headers.get('x-request-id'),
-    });
-  }
-  return body;
-}
-
-const storeKey = 'US-DEMO'; // 替换为当前 CRM 用户有权查看的店铺映射值。
-const base = '/api/crm/v1/stores/' + encodeURIComponent(storeKey);
-const response = await read(base + '/results');
-const checks = response.data.checks;
+```bash
+curl -sS -i --max-time 15 \
+  -H "Authorization: Bearer $AMZGUARD_CRM_API_TOKEN" \
+  -H 'Accept: application/json' \
+  'https://amzcheck.pc51.com/api/crm/v1/stores'
 ```
+
+PHP / Laravel 使用同样的 HTTPS 请求头即可。**按 HTTP 状态判断成功，不按 CRM 原有的 `code === 0` 判断。** 本接口没有开放 CORS，由 CRM 后端取数，再通过 CRM 自己的接口提供给前端。
 
 ### 响应怎么读
 
-成功的 JSON 响应都有 `apiVersion`、`requestId`、`generatedAt` 和 `data`。数据接口另有 `pagination` 和 `metadata`；能力、票据、会话、退出接口没有这两项。OpenAPI 文件、HTML 和 303 跳转使用各自的格式。
+成功 JSON 都有 `apiVersion`、`requestId`、`generatedAt`、`data`；错误格式见第 4 节。OpenAPI 文件、HTML 和重定向不使用这个 JSON 包装。
 
-| 字段 | 读取方式 |
+| 字段 | 含义 |
 |---|---|
-| `data` | 实际业务内容；`results` 是对象，店铺、批次和明细列表是数组 |
-| `generatedAt` | 这次 API 响应的生成时间，**不是 Amazon 采集时间** |
-| `pagination` | 列表分页信息；不分页的数据接口返回 `null` |
+| `data` | 业务内容；结果接口返回对象，店铺、批次和明细接口返回数组 |
+| `generatedAt` | API 响应生成时间，不是 Amazon 采集时间 |
+| `pagination` | 分页信息；不分页的数据接口返回 `null` |
 | `metadata.staleAfterMs` | 数据过期阈值，单位毫秒 |
-| `metadata.ignoredReports` | 被排除的无效报告数；大于 0 时，需提示保存数据的覆盖不完整 |
-| `requestId` | 排查请求用的编号，也在 `X-Request-Id` 响应头中返回 |
+| `metadata.ignoredReports` | 本次读取的检查目录中被排除的无效报告数，并非仅统计本店；大于 0 时提示数据覆盖不完整 |
+| `requestId` | 请求编号，也在 `X-Request-Id` 响应头中，供排查问题使用 |
 
-业务字段中的 `null` 表示缺失或无法判定，不能转换成 0 或“正常”。响应时间和 `source` 中的采集时间使用 ISO 8601；明细中的历史日期字段保留各自类型，见 OpenAPI。日期参数使用北京时间的 `YYYY-MM-DD`。接口响应带 `Cache-Control: no-store`。
+能力、票据、会话和退出接口不带 `pagination/metadata`。响应带 `Cache-Control: no-store`；缺失值保留 `null`，不能转成 0 或“正常”。采集时间采用 ISO 8601，日期筛选使用北京时间的 `YYYY-MM-DD`。
 
 ## 2. 读取探测结果
 
@@ -92,43 +68,7 @@ const checks = response.data.checks;
 GET /api/crm/v1/stores/{storeKey}/results
 ```
 
-不接受 query 参数。响应的 `data` 包含 `store` 和 `checks`；`checks` 固定包含九项检查。
-
-### 页面重点使用的字段
-
-| 位置 | 字段 | 用途 |
-|---|---|---|
-| 每个 check | `checkId`、`checkNo`、`title` | 检查标识、编号和名称 |
-| 每个 check | `status`、`severity`、`stale` | 汇总状态、严重程度、是否过期；这里的 **`status` 是数组** |
-| 每个 check | `resultCount`、`results` | 结果数量和逐条结果；一项检查可能有多个 ASIN 结果 |
-| 每条 result | `status`、`severity`、`ok`、`actionState` | 逐条状态及展示依据；这里的 `status` 是字符串 |
-| 每条 result | `businessStatus`、`collectionStatus`、`confidence` | 区分业务异常、采集问题和证据可信度 |
-| 每条 result | `metrics` | 对应检查的指标；字段随检查类型变化 |
-| 每条 result | `source` | 原始批次、快照、采集时间和新鲜度 |
-| 每条 result | `evidence` | DOM 与页面文本两路证据的可用性 |
-
-`actionState` 有三个值：`NORMAL`（正常）、`BUSINESS`（业务需处理）、`COLLECTION`（采集需处理）。展示时同时保留状态和新鲜度，不要只取一个计数决定是否显示绿色。
-
-以下情况需要单独处理：
-
-- **暂无可用报告**：check 返回 `status: ["NEVER_RUN"]`、`severity: null`、`results: []`。页面显示“暂无可用结果”；这也可能由无效报告被排除导致，不能仅凭该状态断定从未采集。
-- **无法判定或证据不足**：`UNKNOWN`、`PARTIAL_EVIDENCE`、未识别状态、双路冲突都需要提醒。`ERROR` 不代表已经确认业务违规。
-- **数据过期**：显示采集时间和过期提示。阈值来自 `REPORT_STALE_HOURS`，默认 36 小时，有效数值最低为 1 小时；以响应中的阈值为准。
-- **历史标记矛盾**：API 会保守调整展示用的 `severity/ok/actionState`，并用 `presentationAdjusted` 标明。`recordedSeverity/recordedOk` 保留历史原值，保存文件不会被改写。
-
-`evidence.dom/text.available` 只说明对应证据对象非空且未标记 error；`bothAvailable=true` 也不能证明分页完整或判定正确。仍要结合状态、可信度、分页覆盖和新鲜度。
-
-### 采集时间取哪里
-
-使用每条结果的 `source.collectedAt`，并同时查看 `timeSource`、`timestampValid` 和 `stale`。`source` 还提供 `runId/snapshotId/checkedAt/collectionDate/reportStartedAt/reportFinishedAt/ageMs`，完整类型见 OpenAPI。
-
-最新结果可能合并了不同批次。例如，只补跑一个 ASIN 后，其他 ASIN 仍保留原来的采集时间。缺少 `checkedAt` 时，时间依次取报告结束、开始、接收时间，最后才取文件 mtime；`timeSource` 会指出来源，mtime 不能证明实际采集时间。
-
-CRM 多刷新几次接口，只会重读保存结果，不会提高 Amazon 的采样频率。
-
-### 九项检查的标识
-
-建议从 `GET /api/crm/v1` 的 `data.checks` 生成检查选项，每项包含 `{id,no,title,scope}`，无需在 CRM 重复维护名称。下表便于联调查阅；编号是历史标识，不代表页面顺序。
+不接受 query 参数。返回的 `data.store` 是店铺信息，`data.checks` 固定包含九项检查：
 
 | 编号 | checkId | 检查 |
 |---|---|---|
@@ -142,98 +82,74 @@ CRM 多刷新几次接口，只会重读保存结果，不会提高 Amazon 的�
 | 8 | `ads-status` | 广告状态 |
 | 9 | `inbox` | Inbox 列表摘要 |
 
+页面选项建议使用能力接口的 `data.checks`（`id/no/title/scope`）。编号是历史标识，不代表展示顺序。
+
+| 位置 | 重点字段 |
+|---|---|
+| 每个 check | `checkId/checkNo/title`：标识与名称；`status`：**状态数组**；`severity/stale`：严重程度与新鲜度；`resultCount/results`：数量与逐条结果 |
+| 每条 result | `status`：**状态字符串**；`severity/ok/actionState`：展示依据；`businessStatus/collectionStatus/confidence`：业务状态、采集状态与可信度 |
+| 每条 result 的其他内容 | `metrics`：检查指标；`source`：批次与采集时间；`evidence`：DOM 和页面文本的证据可用性 |
+
+`actionState` 为 `NORMAL`（正常）、`BUSINESS`（业务需处理）或 `COLLECTION`（采集需处理）。不要只靠一个计数显示绿色，以下情况要保留提示：
+
+- **暂无结果**：`status: ["NEVER_RUN"]`、`severity: null`、`results: []`。可能未采集，也可能已有报告被排除，不能直接显示“正常”。
+- **证据不足**：`UNKNOWN`、`PARTIAL_EVIDENCE`、未识别状态、双路冲突都需提醒；`ERROR` 不等于已确认业务违规。`evidence.dom/text.available` 只表示证据对象非空且未标记 error，两路可用也不证明分页完整。
+- **数据过期**：显示 `source.collectedAt` 和 `stale`，结合 `timeSource/timestampValid` 判断时间来源。当前默认阈值为 36 小时，最低可配置 1 小时，以接口返回值为准。
+- **历史状态矛盾**：接口会保守调整展示用的 `severity/ok/actionState`，并标记 `presentationAdjusted`；`recordedSeverity/recordedOk` 保留历史原值，不改写保存文件。
+
+最新结果可能合并不同批次，例如只补跑一个 ASIN 后，其他 ASIN 仍沿用原采集时间。缺少 `checkedAt` 时，依次取报告结束、开始、接收时间，最后取文件 mtime；`timeSource` 会说明来源，mtime 不能证明采集时间。刷新 CRM 页面只会重读保存数据，不会提高 Amazon 采样频率。
+
 ## 3. 读取完整数据
 
-这里的“完整”指**指定批次中允许对外提供的全部有效保存记录**。接口不会补采未保存的详情，也不提供原始 JSON 下载。
+“完整”指指定批次中允许对外提供的全部有效保存记录，不代表 Amazon 当前的全部数据。接口不会补采缺失详情，也不提供原始 JSON 或截图下载。
 
-### 第一步：选择批次
+### 先选批次，再逐页读取
 
 ```http
 GET /api/crm/v1/stores/{storeKey}/checks/{checkId}/runs?from=2026-09-01&to=2026-09-12&page=1&pageSize=100
+GET /api/crm/v1/stores/{storeKey}/checks/{checkId}/data?runId={runId}&snapshotId={snapshotId}&page=1&pageSize=100
 ```
 
-| 参数 | 必填 | 说明 |
+| 参数 | 适用接口 | 规则 |
 |---|---|---|
-| `from`、`to` | 否 | 起止日期，含两端；按结果的北京时间采集日期筛选，**不是评价发表日期** |
-| `page` | 否 | 从 1 开始，默认 1，最大 1,000,000 |
-| `pageSize` | 否 | 默认 100，最大 200 |
+| `from/to` | `runs` | 可选，含起止日期，按结果的北京时间采集日期筛选，不是评价发表日期；`from` 不得晚于 `to` |
+| `runId` | `data` | 必填，从 `runs` 原样取得，包括旧数据的 `legacy:`、`opaque:` 标识 |
+| `snapshotId` | `data` | 可选，但建议始终传入；从 `runs` 原样取得，用于发现翻页期间的数据变化 |
+| `page` | 两者 | 默认 1，最大 1,000,000；只接受无前导零的正整数 |
+| `pageSize` | 两者 | 默认 100，最大 200；只接受无前导零的正整数 |
 
-`data` 按报告时间由新到旧返回。选中批次后，保留它的 `runId` 和 `snapshotId`，用于下一步。
+读取步骤：
 
-批次里的三个数量含义不同：`matchingResultCount` 是日期筛选命中的结果数，`resultCount` 是该店整个批次的结果数，`savedRecordCount` 是展开后的 API 记录数，包含摘要行。
+1. `runs.data` 按报告时间由新到旧排列，选中批次并保存 `runId/snapshotId`。
+2. `data` 从第 1 页开始读取。翻页只增加 `page`，保持 `runId/snapshotId/pageSize` 不变。
+3. 将响应的 `data` 数组依次拼接，直到 `pagination.hasMore=false`；全部成功后再使用这批记录。`pagination` 还含 `total/pages`，超过末页返回空数组。
+4. 遇到 `409 SNAPSHOT_CHANGED`，丢弃已拼接的页面，重新选批次并从第 1 页开始；`409 REPORT_CONFLICT` 表示同一批次的保存副本冲突，交给监测站维护人员处理。
 
-**日期条件只用于选批次。** 一个批次有结果命中就会入选；随后读取 `data` 时，返回该店的整个批次，不再沿用 `from/to` 筛选。
+日期条件只用来选择批次：一个批次有结果命中就会入选，随后 `data` 返回该店整个批次。`matchingResultCount` 是日期命中的结果数，`resultCount` 是该店批次的结果数，`savedRecordCount` 是展开后的 API 记录数（含摘要行）。
 
-### 第二步：固定批次，逐页读取
+未知或重复的 query 参数会被拒绝。`stores/results` 不接受 query；`runs` 仅接受 `from/to/page/pageSize`；`data` 仅接受 `runId/snapshotId/page/pageSize`。用标准 URL 编码构造路径段和 query，不自行拼接未经编码的值。
 
-```http
-GET /api/crm/v1/stores/{storeKey}/checks/{checkId}/data?runId=RUN_ID&snapshotId=SNAPSHOT_ID&page=1&pageSize=100
-```
+### 明细内容与边界
 
-| 参数 | 必填 | 说明 |
-|---|---|---|
-| `runId` | 是 | 从 `runs` 返回值中取得，原样传回，不自行构造 |
-| `snapshotId` | 否，建议始终传入 | 报告内容摘要；用于发现翻页期间的数据变化 |
-| `page`、`pageSize` | 否 | 与 `runs` 使用相同的默认值和范围 |
-
-沿用前面的 `read` 函数和 `base`，下面的示例读取最新 Reviews 批次的所有页面：
-
-```js
-const runs = await read(base + '/checks/reviews/runs?page=1&pageSize=100');
-const latestRun = runs.data[0];
-
-if (latestRun) {
-  const { runId, snapshotId } = latestRun;
-  const records = [];
-  for (let page = 1; ; page++) {
-    const query = new URLSearchParams({
-      runId, snapshotId, page: String(page), pageSize: '100',
-    });
-    const response = await read(base + '/checks/reviews/data?' + query);
-    records.push(...response.data);
-    if (!response.pagination.hasMore) break;
-  }
-  // 全部分页成功后，再将 records 交给 CRM 的展示或后续业务处理。
-}
-```
-
-翻页时保持 `runId/snapshotId/pageSize` 不变。`pagination` 返回 `page/pageSize/total/pages/hasMore`；超过末页时返回空数组。
-
-- 遇到 `409 SNAPSHOT_CHANGED`，丢弃已经拼接的页面，重新查询批次，从第一页开始。
-- 遇到 `409 REPORT_CONFLICT`，表示同一 `runId` 的保存副本不一致，交给监测站维护人员核对。
-- 旧报告可能返回 `legacy:` 或 `opaque:` 开头的 `runId`。把它当普通标识原样传回即可。
-
-所有接口都会拒绝未知或重复的 query 参数。`stores/results` 不接受 query；`runs` 只接受 `from/to/page/pageSize`，`data` 只接受 `runId/snapshotId/page/pageSize`。路径段使用 URL 编码，query 用 `URLSearchParams` 构造；不要把 token、ticket 或密码放入 query。
-
-### 明细记录的结构
-
-`data.data` 是记录数组。每条都有 `recordType`、`resultIndex` 和所属检查结果 `result`，再按类型提供明细：
+响应正文的 `data` 是记录数组。每条都有 `recordType/resultIndex/result`，按类型提供内容：
 
 | recordType | 内容 |
 |---|---|
-| `check-result` | 没有明细的检查结果；Inbox 只返回这种摘要 |
-| `business-item` | 一般业务明细，另有 `itemIndex` 和 `item` |
+| `check-result` | 检查摘要，无明细；Inbox 仅返回这一类 |
+| `business-item` | 一般业务明细，含 `itemIndex/item` |
 | `voc-asin` | VOC 的 ASIN 概况 |
-| `voc-record` | 该 ASIN 下的单条 VOC 记录，另有 `recordIndex` 和 `parentAsin`；每条记录独立参与分页 |
+| `voc-record` | 该 ASIN 的单条 VOC 记录，含 `recordIndex/parentAsin`，每条独立参与分页 |
 
-返回顺序沿用保存的 result/item 顺序，VOC 按 ASIN 概况及其记录展开。索引从 0 开始，只在当前批次内有效。跨批次关联时，应使用实际存在的 `reviewId/orderId/asin/sku` 等业务标识，不要用数组序号去重。
+记录沿用保存顺序，VOC 按 ASIN 概况及其记录展开。索引从 0 开始，仅在当前批次有效；跨批次关联使用实际存在的 `reviewId/orderId/asin/sku` 等业务标识。字段类型、可空值和历史日期格式以 OpenAPI 为准。
 
-### 能拿到什么，哪些情况会缺数据
-
-公开字段包括 ASIN/SKU、评分、评价日期、业务文本、订单/退货标识、VOC 指标、广告名称和状态等，具体字段以 OpenAPI 为准。未知数值保留 `null`。
-
-| 情况 | 接口行为 |
-|---|---|
-| 报告损坏、结构无效或时间明显在未来 | 排除该报告，并计入 `metadata.ignoredReports`；该计数覆盖所读检查目录，不是本店专属计数 |
-| Inbox | 仅返回检查摘要，不返回主题、正文、买家、订单或消息 ID |
-| Reviews 历史截图关联缺失 | `reviewPages` 返回空数组；只有保存页的 `reviewIds` 明确关联当前评价时，才返回页码和截图采集时间，不推测关联或更改评价日期 |
-| 凭据、结构化买家身份及联系字段、原始 DOM/页面文本、内部路径、截图 | 不通过接口提供 |
-
-允许返回的业务自由文本会移除已识别的身份值，并按现有规则脱敏。无标签的自然语言仍可能含有未识别的个人信息，请勿用这些文本建立个人资料。
+- 报告损坏、结构无效或时间明显在未来时会被排除，计入 `metadata.ignoredReports`。
+- Inbox 不返回消息主题、正文、买家、订单或消息 ID。其他接口也不提供凭据、结构化买家身份/联系字段、原始 DOM/页面文本、内部路径或截图。
+- Reviews 只有保存页的 `reviewIds` 明确关联当前评价时，才返回 `reviewPages` 中的页码与截图采集时间；历史关联缺失时为空数组，不推测关联或更改评价日期。
+- 业务自由文本会按现有规则脱敏，但无标签的自然语言仍可能含未识别的个人信息，不应据此建立个人资料。
 
 ## 4. 错误处理和调用频率
 
-错误响应使用 `application/problem+json`（[RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)），不放在成功响应的 `data` 中。例如：
+错误使用 `application/problem+json`（RFC 9457），与成功响应分开：
 
 ```json
 {
@@ -243,188 +159,136 @@ if (latestRun) {
   "code": "SNAPSHOT_CHANGED",
   "requestId": "11111111-1111-4111-8111-111111111111",
   "detail": "The saved run changed; restart pagination.",
-  "instance": "/api/crm/v1/stores/US-DEMO/checks/reviews/data"
+  "instance": "/api/crm/v1/stores/XCAI/checks/reviews/data"
 }
 ```
 
-| HTTP | CRM 侧怎么处理 |
+| HTTP 状态 | 处理方式 |
 |---|---|
-| 400 | 修正参数、JSON 或 HTTPS 请求条件，不原样重试 |
-| 401 | 后端核对 Bearer；浏览器会话失效时，从 CRM 重新进入 |
-| 403 | 核对店铺权限、跳转目的地或同源校验 |
-| 404 | 核对店铺授权、checkId 和 runId；不能把“取不到数据”显示为正常 |
-| 405 | 改用 `Allow` 响应头指定的方法 |
-| 409 | 根据 `code` 处理；快照和报告冲突见上节，免密握手已签发时不要重复签票 |
+| 400 | 检查参数、JSON 和 HTTPS 条件，不原样重试 |
+| 401 | 检查后端 Token；浏览器会话过期时，从 CRM 重新进入 |
+| 403 / 404 | 检查店铺权限、检查标识、批次或跳转目的地；取不到数据不能显示为正常 |
+| 405 | 使用 `Allow` 响应头指定的方法 |
+| 409 | 按 `code` 处理快照变化、报告冲突或握手已签票；不要重复签票 |
 | 413 / 415 | 修正正文大小、Content-Type 或压缩方式 |
-| 421 | 使用本文开头的规范服务域名 |
-| 429 | 等待 `Retry-After` 指定的秒数后重试 |
-| 500 / 503 | 显示暂时不可用，记录 `requestId` 交给维护人员；503 也可能是免密回调尚未配置 |
+| 421 | 使用本文的规范服务地址 |
+| 429 | 读取请求等待 `Retry-After` 指定秒数后重试；签票/兑换重新开始握手 |
+| 500 / 503 | 显示暂时不可用，保留 `requestId` 交给维护人员；503 也可能是相应免密模式未配置 |
 
-限流按可信客户端 IP 计算，窗口为 60 秒：
+按可信客户端 IP 限流，每个窗口 60 秒：API 合计 **120 次**，浏览器 `/crm` 路径合计 **60 次**；开始握手另限 **10 次**，签票和兑换各另限 **20 次**。共用出口的用户共享额度。`X-RateLimit-Limit/Remaining` 显示最后检查的一项额度，其他限制仍有效。
 
-| 范围 | 上限 |
-|---|---|
-| API 请求合计 | 120 次 |
-| 浏览器 `/crm` 路径请求合计 | 60 次 |
-| 开始免密握手 | 另限 10 次 |
-| 签票、兑换 | 各另限 20 次 |
-
-多个用户共用出口时会共享额度。响应头 `X-RateLimit-Limit/Remaining` 给出额度信息；请求命中多项规则时，头部显示最后检查的一项，其他限制仍然有效。读取请求可退避重试；签票超时或响应丢失时，从 CRM 重新开始握手。
-
-排查问题只需提供 `requestId`、错误码和发生时间，不要附带令牌、Cookie 或原始业务数据。
+读取请求可退避重试；**签票和兑换不要自动重试**。排查时只提供请求编号、错误码和时间，不附 Token、Cookie 或业务原文。
 
 ## 5. 免密跳转（可选）
 
-这一部分用于 CRM 的“打开监测详情”入口，只做后端取数时可以跳过。监测站提供两种模式：
+当前 CRM 使用 HTTP 页面和 Bearer 登录，请接入**弹窗模式**。CRM 负责用户与店铺授权，监测站负责一次性票据和单店只读会话。后端取数不依赖免密功能。
 
-| 模式 | 监测站入口 | 接入条件 |
-|---|---|---|
-| 弹窗 | `GET /crm/sso/bridge` | 适合现有 HTTP、Bearer 登录的 CRM 页面；监测站配置精确的 CRM origin |
-| 重定向 | `GET /crm/sso/start` | CRM 已有可识别当前用户的有效 HTTPS 回调 |
+### 第一步：CRM 页面打开监测窗口
 
-能力接口的 `ssoModes` 返回已配置模式：`popup` 或 `redirect`；旧部署可能没有该字段，不应据此假定支持弹窗。`ssoAvailable=true` 只说明监测站至少配置了一种模式，不证明 CRM 侧已经完成接入。两种模式均由 CRM 后端验证真实用户和店铺权限，再调用同一个签票接口；CRM 前端不持有监测站 API Token。
-
-### 弹窗模式：适配现有 HTTP CRM 页面
-
-入口参数：
+先注册 `message` 监听，再在用户点击时同步 `window.open`，不要先等待异步请求。每次打开生成一个 32 字节随机数，编码为 43 字符 base64url，作为 `requestId`。HTTP 页面可用 `crypto.getRandomValues`，不要依赖仅安全上下文可用的 `crypto.randomUUID`。
 
 ```http
-GET /crm/sso/bridge?storeKey=US-DEMO&view=results&requestId=CLIENT_REQUEST_ID
+GET /crm/sso/bridge?storeKey=XCAI&view=results&requestId={requestId}
 ```
 
-| 参数 | 说明 |
-|---|---|
-| `storeKey` | 必填，目标店铺的监测站 key |
-| `view` | 必填，`results` 或 `data` |
-| `checkId` | 可选，九项检查中的一个标识 |
-| `requestId` | 必填，CRM 页面为本次打开生成的 32 字节随机数，编码为 43 字符 base64url；只用于关联窗口，不是用户身份 |
+`storeKey/view/requestId` 必填；`view` 为 `results` 或 `data`；可选 `checkId` 使用第 2 节标识。`checkId/view` 只决定初始页面，会话可读取该店全部九项检查。
 
-先注册 `message` 监听，再在用户点击时同步通过 `window.open` 打开入口。不能先等待异步请求，也不能添加会切断 opener 的 `noopener/noreferrer`；监测窗口只发送一次握手消息，监听注册过晚会错过它。HTTP 页面生成关联值可使用 `crypto.getRandomValues`；不要依赖只在安全上下文可用的 `crypto.randomUUID`。
+不要设置会切断 opener 的 `noopener/noreferrer`，不要嵌入 iframe。页面或代理的 `Cross-Origin-Opener-Policy: same-origin` 也可能切断窗口关系，接入页需使用可保留弹窗关系的策略。
 
-监测窗口设置 120 秒的 Secure、HttpOnly 绑定 Cookie，只向配置的 CRM origin 发送以下消息：
+### 第二步：接收握手，交给 CRM 后端签票
+
+监测窗口设置 Secure、HttpOnly 绑定 Cookie，并只向已配置的 CRM origin 发送一次消息：
 
 ```json
 {
   "type": "amzguard:crm:challenge",
   "version": 1,
-  "requestId": "<CLIENT_REQUEST_ID>",
-  "challengeId": "<MONITOR_CHALLENGE_ID>",
-  "storeKey": "US-DEMO",
+  "requestId": "<本次打开生成的 requestId>",
+  "challengeId": "<监测站生成的 challengeId>",
+  "storeKey": "XCAI",
   "view": "results",
   "checkId": null
 }
 ```
 
-CRM 页面应同时核对 `event.origin` 是监测站 origin、`event.source` 是本次打开的窗口、`requestId` 和目标店铺/页面与本次操作一致，再让自己的后端签票。不要仅收到同名消息就发起签票，也不要接受消息中的用户身份或角色。CRM 现有 Bearer 留在原有的 CRM 请求链路中，不传给监测站或放入窗口消息。
+CRM 页面须核对 `event.origin === 'https://amzcheck.pc51.com'`、`event.source` 是本次窗口、`version === 1`，并核对 `requestId` 和店铺/页面与本次操作一致。记录这次 `challengeId` 后，仅处理一次握手，再通过 CRM 自己的已认证请求链路调用后端。
 
-后端签票返回 201 后，CRM 页面只向原监测窗口的精确 origin 发送：
+CRM 后端独立检查当前用户已登录、可以查看目标店铺，再携带专用 API Token 签票：
+
+```http
+POST /api/crm/v1/sso/tickets
+Authorization: Bearer <API_TOKEN>
+Content-Type: application/json
+```
+
+```json
+{
+  "challengeId": "<收到的 challengeId>",
+  "subject": "crm-user-123",
+  "storeKey": "XCAI",
+  "view": "results",
+  "checkId": null
+}
+```
+
+`storeKey/checkId/view` 必须与握手一致。`subject` 由 CRM 后端从真实用户身份生成，使用稳定、不含个人信息的用户标识，长度 1～128 字符，无首尾空白或控制字符；不要信任前端提交的用户身份或角色。正文最多 8192 字节，不接受压缩或未知字段。
+
+成功返回 **201**，正文的 `data` 含 `loginUrl/expiresAt/singleUse`。保留原样 `loginUrl`，不要拼接任意跳转地址。当前 CRM 的请求封装会重试部分失败，签票这一请求须关闭自动重试。
+
+### 第三步：把票据交回原窗口
+
+CRM 页面向原监测窗口的精确 origin `https://amzcheck.pc51.com` 发送：
 
 ```json
 {
   "type": "amzguard:crm:ticket",
   "version": 1,
-  "requestId": "<CLIENT_REQUEST_ID>",
-  "challengeId": "<MONITOR_CHALLENGE_ID>",
-  "loginUrl": "https://amzcheck.pc51.com/crm/sso#ticket=<ONE_TIME_TICKET>"
+  "requestId": "<本次 requestId>",
+  "challengeId": "<本次 challengeId>",
+  "loginUrl": "<签票响应中的 data.loginUrl>"
 }
 ```
 
-监测窗口校验 origin、opener、关联值、握手和固定 `loginUrl`，自行在 HTTPS 同源兑换。成功后发送 `{type:'amzguard:crm:complete',version:1,requestId,challengeId}`，断开 opener，再进入 `/crm/`。收到签票响应不等于浏览器已登录，应以这条完成消息为准。
+监测窗口校验来源、窗口、关联值和固定登录地址，在 HTTPS 同源兑换票据。成功后发送 `{type:'amzguard:crm:complete',version:1,requestId,challengeId}`，断开 opener 并进入 `/crm/`。CRM 收到完成消息时仍要核对来源、窗口和本次关联值；签票返回成功本身不等于浏览器已登录。
 
-CRM 鉴权或签票失败时，可发送 `{type:'amzguard:crm:error',version:1,requestId,challengeId}` 结束握手；不要附加原始错误、身份或凭据。消息只接受上述精确字段，不能用 `*` 作为 `postMessage` 的目标 origin。错误来源、窗口或关联值会被忽略，重复票据消息不会再次兑换。
+CRM 鉴权或签票失败时，发送 `{type:'amzguard:crm:error',version:1,requestId,challengeId}` 结束握手，或关闭窗口。消息使用上述精确字段，不附加身份、原始错误或凭据，不使用 `*` 作为目标 origin。监测窗口会忽略错误来源、窗口或关联值，重复票据不会再次兑换。
 
-当前 CRM 的请求封装会重试部分网络/429/502/503/504 错误。**签票必须关闭自动重试**；超时或响应丢失后，由用户重新开始握手。当前绑定 Cookie 为浏览器共用，一次只完成一个握手；多个标签同时打开可能使较早窗口的绑定失效。窗口关闭、超时、没有 opener 时都不会放行。
-
-若 CRM 或代理强制 `Cross-Origin-Opener-Policy: same-origin`，窗口关系可能被切断；接入页需使用可保留弹窗关系的策略。监测站只在 bridge 页采用 `unsafe-none`，成功后立即断开 opener。HTTP CRM 页面及其既有登录请求仍有 HTTP 的传输限制，本接口不会改变 CRM 的协议；监测站 API、绑定 Cookie 和兑换始终要求 HTTPS。
-
-### 重定向模式
-
-CRM 主页面可以通过普通链接进入监测站，但必须先实现有效的 HTTPS 回调并交给监测站配置。回调未配置时，`/crm/sso/start` 返回 503；弹窗模式可用也不会自动改走另一流程。普通 CRM 页面地址不能直接作为回调，HTTP 页面的 localStorage Token 不会随导航自动带到 HTTPS 回调。
-
-### 重定向链接
-
-使用普通顶层链接，不嵌入 iframe，也不在链接里放认证令牌：
-
-```text
-https://amzcheck.pc51.com/crm/sso/start?storeKey=US-DEMO&view=results
-https://amzcheck.pc51.com/crm/sso/start?storeKey=US-DEMO&checkId=reviews&view=data
-```
-
-`storeKey/view` 必填，`view` 可取 `results` 或 `data`，`checkId` 可省略。`checkId/view` 只决定打开后的初始页面，会话有权读取该店全部九项检查。
-
-HTTP CRM 页面也可使用下面的按钮。`US-DEMO` 须由 CRM 按当前用户的授权店铺映射替换；动态生成 URL 时对 `storeKey` 做 URL 编码。
-
-```html
-<a href="https://amzcheck.pc51.com/crm/sso/start?storeKey=US-DEMO&amp;view=results"
-   referrerpolicy="no-referrer">查看店铺监测</a>
-```
-
-点击后由浏览器直接导航，不使用跨域 `fetch`、iframe，也不从 HTTP 页面兑换票据。CRM 的 HTTPS 回调需要识别当前登录用户；不要假定浏览器会把 HTTP 页面的 localStorage 登录 Token 自动带给回调。
-
-### CRM 后端需要做的事
-
-1. 用户点击按钮后，监测站建立握手，并通过 303 跳回已配置的 CRM HTTPS 回调，带上 `challengeId/storeKey/view` 和可选的 `checkId`。
-2. CRM 回调检查当前用户是否已登录、是否有该店铺的读取权限。回调参数只说明用户要去哪里，不能当作授权依据。
-3. 校验通过后，CRM 后端携带专用 Bearer，调用 `POST /api/crm/v1/sso/tickets` 签票。`storeKey/checkId/view` 必须与收到的握手目的地完全一致。
-4. 监测站返回 201。CRM 后端将当前浏览器 303 跳转到 `data.loginUrl`；后续兑换和进入只读页面由监测站完成，CRM 无需自行兑换。
-
-签票正文：
-
-```json
-{
-  "challengeId": "<FROM_MONITOR_CALLBACK_QUERY>",
-  "subject": "crm-user-demo",
-  "storeKey": "US-DEMO",
-  "checkId": "reviews",
-  "view": "data"
-}
-```
-
-`subject` 使用 CRM 内部稳定、不含个人信息的用户标识，长度 1–128 字符，不含首尾空白或控制字符。POST 使用 `Content-Type: application/json`，正文不超过 8192 字节，不接受压缩正文或未知字段。
-
-已有 [Node.js 回调组件](../src/crm/callback-adapter.js) 仅供 Node.js 22+ 调用方参考，不是现有 Laravel CRM 必须安装的依赖。接口本身不限制后端语言；本文约定监测站的入口、签票和消息协议，CRM 侧接入由其开发者完成。
-
-HTTP 来源页面不会放宽后续校验：回调证书必须覆盖回调域名，签票只由 CRM 后端完成，票据只在发起跳转的浏览器中兑换。若回调出现证书错误，应由 CRM 维护人员修正证书配置，不关闭 TLS 校验或改用 HTTP 回调。
-
-### 有效期与会话规则
+### 会话与失败处理
 
 | 项目 | 规则 |
 |---|---|
-| 握手 | 120 秒，绑定发起它的浏览器，通过独立 HttpOnly Cookie 校验 |
-| 票据 | 一次有效，最长 60 秒，且不能超过握手期限；跨浏览器或重复兑换会被拒绝 |
-| 只读会话 | 30 分钟，不自动续期，只授权一家店铺；失效后从 CRM 重新进入 |
-| CRM 退出或撤销用户权限 | 不会主动撤销已签发的监测会话；该会话最长继续有效至 30 分钟到期。再次进入时由 CRM 重新鉴权；监测站停用店铺或撤销客户端店铺授权则立即阻止读取 |
-| 重启或 CRM 入站认证配置变化 | 内存中的握手、票据和会话失效；修改店铺展示名或页面设置不会清空会话。当前实现为单进程，不能任意分发到多个实例 |
+| 握手 | 120 秒，绑定发起浏览器；同一浏览器一次完成一个握手，同时打开多个窗口可能使较早绑定失效 |
+| 票据 | 一次有效，最长 60 秒且不超过握手期限；跨浏览器和重放均拒绝 |
+| 只读会话 | 30 分钟，不自动续期，只授权一家店铺；过期后从 CRM 重新进入 |
+| 关闭窗口、超时或响应丢失 | 由用户重新发起握手，不自动重试签票或兑换 |
+| CRM 退出/撤销用户权限 | 不会主动撤销已发出的监测会话，最长保留至其 30 分钟到期；监测站停用店铺或撤销店铺授权会立即阻止读取 |
+| 监测站重启/修改入站认证配置 | 握手、票据和会话失效；改展示名/页面设置不会清空会话。当前认证状态为单进程内存，不能任意分发到多个实例 |
 
-`loginUrl` 固定指向监测站的 `/crm/sso#ticket=...`。CRM 不要记录这个值或拼接任意 `returnUrl`。重定向完成页先清除 fragment；弹窗方式在内存中提取票据，两种方式都由监测页面同源 POST 兑换。
+API Token 不进入窗口消息；CRM 用户 Token 留在 CRM 原有请求链路，不交给监测站。`loginUrl` 固定为 `https://amzcheck.pc51.com/crm/sso#ticket=...`，不记录票据。HTTP CRM 页面及原有登录请求仍受 HTTP 传输限制，监测站 API 和兑换始终要求 HTTPS。
 
-浏览器使用独立的只读 Cookie，不能调用原 Dashboard API；普通 Dashboard Cookie 也不能读取 CRM 接口。取数 API 同时收到 Authorization 和 Cookie 时，以 Authorization 为准，错误 Bearer 不会回退到 Cookie。`/crm`、`/crm/` 和 `/crm/session` 只认 CRM Cookie。Bearer 使用 HTTPS 请求头传递（[RFC 6750](https://www.rfc-editor.org/rfc/rfc6750)）；这里的免密握手是本项目协议，不是 OAuth/OIDC。
+监测页自行调用 `/crm/session`、`/crm/sso/exchange`、`/crm/logout`；兑换和退出使用同源 JSON POST，退出正文为 `{}`。监测会话与 Dashboard 账户隔离，不能调用管理、上传、补跑或竞品接口。数据 API 同时收到 Authorization 和 Cookie 时，以 Authorization 为准，错误 Bearer 不回退到 Cookie；`/crm`、`/crm/`、`/crm/session` 只认独立 CRM Cookie。此握手是本项目协议，不是 OAuth/OIDC。
 
-`/crm/session`、`/crm/sso/exchange` 和 `/crm/logout` 由监测站页面调用。兑换和退出要求匹配的 Origin 与同源 JSON；退出发送 POST `{}`，只撤销 CRM 只读会话。
+### 以后需要 HTTPS 重定向时
+
+仅在 CRM 已有可识别当前用户的 HTTPS 回调时使用：监测站配置固定回调，CRM 链接进入 `/crm/sso/start?storeKey=XCAI&view=results`，监测站通过 303 带回 `challengeId/storeKey/view` 和可选 `checkId`。CRM 回调鉴权后调用同一个签票接口，再将浏览器 303 跳到 `data.loginUrl`；监测完成页先清除 fragment，再同源兑换。
+
+HTTP 页面的 localStorage Token 不会随导航自动带给 HTTPS 回调。回调须有有效域名证书，不能用普通页面地址代替，也不关闭 TLS 校验。未配置时该入口返回 503，不会自动切换到弹窗。现有 Node.js 22+ 回调参考组件不属于 Laravel CRM 的接入依赖。
 
 ## 6. 监测站配置
 
-本节由监测站运维处理。变量写入 `/etc/amzguard/dashboard.env`，文件权限保持 `root:root 0600`，无需改动 `channels.env`。
+本节供监测站运维维护，**CRM 开发者接入当前服务无需配置这些变量**。配置位于 `/etc/amzguard/dashboard.env`，保持 `root:root 0600`。
 
-| 变量 | 填什么 |
+| 变量 | 约束 |
 |---|---|
-| `AMZGUARD_CRM_CLIENT_ID` | 客户端标识；字母数字开头，后续允许 `._-`，最长 64 字符 |
-| `AMZGUARD_CRM_API_TOKEN` | 新生成的后端专用随机令牌，32–512 字符 |
-| `AMZGUARD_CRM_STORE_KEYS` | 允许读取的确切店铺 key，逗号分隔、不重复，不支持 `*`；每个 key 与客户端标识使用相同字符规则 |
-| `AMZGUARD_CRM_PUBLIC_ORIGIN` | `https://amzcheck.pc51.com` 这样的 HTTPS origin；不含路径、query、fragment、用户名或密码 |
-| `AMZGUARD_CRM_CALLBACK_URL` | 重定向模式的固定 HTTPS 回调 URL；不含 query、fragment、用户名或密码。仅接弹窗时留空 |
-| `AMZGUARD_CRM_BRIDGE_ORIGIN` | 弹窗模式唯一允许的 CRM 来源，例如 `http://amzcrm.pc51.com`；使用浏览器 `URL.origin` 的规范值，不能等于监测站 origin，不含路径、尾斜杠、query、fragment、用户名或密码，不接受 `*`。默认留空关闭弹窗 |
+| `AMZGUARD_CRM_CLIENT_ID` | 客户端标识，字母数字开头，后续允许 `._-`，最长 64 字符 |
+| `AMZGUARD_CRM_API_TOKEN` | 后端专用随机令牌，32～512 字符，与其他凭据独立 |
+| `AMZGUARD_CRM_STORE_KEYS` | 逗号分隔的确切店铺 key，不重复、不支持 `*`，每个 key 与客户端标识使用相同字符规则 |
+| `AMZGUARD_CRM_PUBLIC_ORIGIN` | 规范 HTTPS origin，不含路径、query、fragment、用户名或密码 |
+| `AMZGUARD_CRM_CALLBACK_URL` | 重定向模式的固定 HTTPS 回调，不含 query、fragment、用户名或密码；仅用弹窗时留空 |
+| `AMZGUARD_CRM_BRIDGE_ORIGIN` | 弹窗唯一允许的 HTTP/HTTPS 来源，使用 `URL.origin` 规范值；不得等于监测站 origin，不含路径、尾斜杠、query、fragment、用户名或密码，不接受 `*`；默认留空关闭 |
 
-六项全空表示关闭；启用时前四项必须配齐，部分配置无效会拒绝启动。最后两项分别启用重定向和弹窗，都留空时仍可后端取数。现有 HTTP CRM 可配置精确的 `AMZGUARD_CRM_BRIDGE_ORIGIN`，不需要放宽 HTTPS 回调规则。
+六项全空为关闭，启用时前四项必须配齐，部分配置无效会拒绝启动。后两项分别启用重定向和弹窗，都留空仍可后端取数。`ssoModes` 表示已配置模式，旧版本可能没有此字段；`ssoAvailable=true` 不代表 CRM 已完成接入。
 
-在现有 env 文件中补充配置，修改后重启 Dashboard，再核对能力接口和授权店铺列表。不要重跑初始化器覆盖生产文件，也无需启动巡检或通知。发布与回滚见 [部署说明](../DEPLOY.md)。
+可读店铺必须同时在管理员维护的启用名单和 Token 授权名单中。新增店铺不自动扩大授权；管理文件损坏时拒绝服务，不回退旧名单。修改 env 后重启 Dashboard 并核对能力、店铺接口；保留现有 env、运行数据和定时器状态，不重跑初始化器，也不启动巡检或通知。入站配置与出站 `CRM_ENDPOINT/CRM_TOKEN` 独立，不改动 `channels.env`。
 
-管理员在 `/#stores` 维护的启用店铺，与 `AMZGUARD_CRM_STORE_KEYS` 共同决定可读范围：**只有同时出现在两份名单中的店铺才可读取。** 新店需由运维加入授权，再由 CRM 开发者建立映射。管理文件损坏时拒绝服务，不回退到旧名单。存储位置和管理接口见[店铺与页面配置](OPERATIONS.md#店铺与页面配置)；CRM 凭据不能修改这些配置。
-
-### 现有 CRM 的对接备注
-
-2026-09-12 曾只读核对已登录的 SellerMaking 页面（入口 `http://amzcrm.pc51.com/analysis/dashboard`）：公开静态资源确认 Vue 3.5.34、Vue Router 4.6.4、Pinia 2.3.1、Element Plus 2.14.0 和 Vite 构建标识；API 异常响应确认后端为 PHP / Laravel，但未暴露这两者的准确版本。其前端使用 `/api` 前缀和 Bearer 认证；GET `/api/auth/me` 返回 `code/msg/data`，用户字段有 `id/username/name/role/seller_id/permissions`；GET `/api/shops` 返回列表 `data` 和数量 `count`。用户 Token 来自 `localStorage.token`，请求封装默认重试部分失败两次。未核实已有免密回调或签票代理，不能据公开页面推断 CRM 的内部 guard、用户模型及店铺授权实现。
-
-这些记录仅供 CRM 开发者定位现有用户与店铺逻辑，不作为 CRM 的稳定接口契约。页面还存在 POST 查询和设置保存逻辑，不能按方法名判断副作用；该次核对未调用新增、编辑、删除、同步或导入接口。原有出站导出与推送另见 [CRM 兼容导出](CRM_EXPORT_COMPATIBILITY.md)。
-
-联调时，用正式获准的 CRM 用户核对取数、越权拒绝、会话失效后重进和退出。`npm test` 可验证监测站的离线行为，但不能证明 CRM 已安装按钮或回调已上线，也不能证明 Amazon 数据刚刚更新。
+当前 CRM 只读核对结果为 Vue 3.5.34、Vue Router 4.6.4、Pinia 2.3.1、Element Plus 2.14.0、Vite 构建和 PHP / Laravel；PHP、Laravel 准确版本未公开。接口使用标准 HTTPS、Bearer 和 JSON，不要求特定 SDK。交付的是监测站接口，CRM 的按钮和用户权限逻辑由 CRM 开发者完成；上线前用真实获准用户核对取数、越权拒绝、过期重进与退出。离线测试通过不代表 CRM 已完成联调，也不代表 Amazon 数据刚更新。
