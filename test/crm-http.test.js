@@ -364,6 +364,59 @@ test('SSO HTTP flow binds the browser, clears fragments before fetch and uses ex
   }
 });
 
+test('HTTP CRM page navigation starts HTTPS SSO while preserving browser binding and single-store access', async t => {
+  const f = await fixture(t);
+  const startPath = '/crm/sso/start?storeKey=US-A&view=data&checkId=reviews';
+  const navigation = { Referer: 'http://crm.example.test/analysis/dashboard',
+    'Sec-Fetch-Site': 'cross-site', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Dest': 'document' };
+  // The fixture models the monitor's HTTPS reverse proxy. Only the referring
+  // CRM page is HTTP; its callback is never fetched by this isolated test.
+  await problem(await f.request(startPath, { headers: { ...navigation, 'X-Forwarded-Proto': 'http' } }),
+    400, 'CRM_HTTPS_REQUIRED');
+  await problem(await f.request(`${startPath}&callbackUrl=https://other.example.test/callback`, { headers: navigation }),
+    400, 'CRM_INVALID_INPUT');
+
+  const started = await f.request(startPath, { headers: navigation });
+  assert.equal(started.status, 303);
+  const binding = pair(started, BINDING);
+  secureCookie(binding.header, BINDING, 120);
+  const callback = new URL(started.headers.get('location'));
+  assert.equal(callback.origin + callback.pathname, 'https://crm.example.test/monitor-entry');
+  assert.deepEqual([...callback.searchParams.keys()], ['challengeId', 'storeKey', 'view', 'checkId']);
+  assert.equal(callback.href.includes(binding.cookie.split('=')[1]), false);
+  assert.equal(callback.href.includes(TOKEN), false);
+
+  // Model the CRM backend after it has authorized the signed-in user's store.
+  // Its dedicated bearer stays on this server-to-server request.
+  const issued = await f.request(`${API}/sso/tickets`, { method: 'POST',
+    headers: { ...f.bearer, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...Object.fromEntries(callback.searchParams), subject: 'fixture-http-crm-user' }) });
+  assert.equal(issued.status, 201);
+  const loginUrl = new URL((await issued.json()).data.loginUrl);
+  assert.equal(loginUrl.origin + loginUrl.pathname, `${ORIGIN}/crm/sso`);
+  assert.equal(loginUrl.search, '');
+  assert.equal(loginUrl.href.includes(binding.cookie.split('=')[1]), false);
+  assert.equal(loginUrl.href.includes(TOKEN), false);
+  const body = JSON.stringify({ ticket: new URLSearchParams(loginUrl.hash.slice(1)).get('ticket') });
+  const exchange = headers => f.request('/crm/sso/exchange', { method: 'POST', headers, body });
+  await problem(await exchange({ ...f.sameOrigin, Cookie: `${BINDING}=${'x'.repeat(43)}` }), 401, 'CRM_TICKET_INVALID');
+  await problem(await exchange({ ...f.sameOrigin, ...navigation, Origin: 'http://crm.example.test', Cookie: binding.cookie }),
+    403, 'CRM_SAME_ORIGIN_REQUIRED');
+  const exchanged = await exchange({ ...f.sameOrigin, Cookie: binding.cookie });
+  assert.equal(exchanged.status, 200);
+  const session = pair(exchanged, SESSION);
+  secureCookie(session.header, SESSION, 1800);
+  await problem(await exchange({ ...f.sameOrigin, Cookie: binding.cookie }), 401, 'CRM_TICKET_INVALID');
+
+  const headers = { Cookie: session.cookie };
+  const stores = await success(await f.request(`${API}/stores`, { headers }), { read: true });
+  assert.deepEqual(stores.data.map(store => store.storeKey), ['US-A']);
+  const data = await success(await f.request(`${API}/stores/US-A/checks/reviews/data?runId=fixture-review-run`, { headers }), { read: true });
+  assert.deepEqual(data.data.map(record => record.item.identifier), ['REVIEW-A-1', 'REVIEW-A-2']);
+  assert.ok(data.data.every(record => record.result.storeKey === 'US-A'));
+  await problem(await f.request(`${API}/stores/US-B/checks/reviews/data?runId=fixture-review-run`, { headers }), 404, 'NOT_FOUND');
+});
+
 test('CRM browser identity cannot use old APIs or borrow a coexisting local admin scope', async t => {
   const f = await fixture(t);
   const login = await f.login();

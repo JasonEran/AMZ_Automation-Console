@@ -277,7 +277,9 @@ if (latestRun) {
 
 这一部分用于在 CRM 添加“打开监测详情”按钮。只做后端取数时可以跳过。
 
-**接入前先由 CRM 实现一个固定的 HTTPS 回调地址，并交给监测站运维配置。** 回调未配置时，能力接口返回 `ssoAvailable=false`，开始跳转返回 503。已有的 HTTP CRM 页面地址不能直接作为此回调。
+CRM 主页面可以继续使用 HTTP，通过普通链接发起跳转；用户打开的监测页面和后续取数仍使用 HTTPS，无需把 API Token 放到 CRM 网页中。
+
+**接入前先由 CRM 实现一个固定的 HTTPS 回调地址，并交给监测站运维配置。** 回调未配置时，能力接口返回 `ssoAvailable=false`，开始跳转返回 503。回调必须实现下文的用户和店铺权限校验，普通 CRM 页面地址不能直接作为回调。
 
 ### 按钮链接
 
@@ -289,6 +291,15 @@ https://amzcheck.pc51.com/crm/sso/start?storeKey=US-DEMO&checkId=reviews&view=da
 ```
 
 `storeKey/view` 必填，`view` 可取 `results` 或 `data`，`checkId` 可省略。`checkId/view` 只决定打开后的初始页面，会话有权读取该店全部九项检查。
+
+HTTP CRM 页面也可使用下面的按钮。`US-DEMO` 须由 CRM 按当前用户的授权店铺映射替换；动态生成 URL 时对 `storeKey` 做 URL 编码。
+
+```html
+<a href="https://amzcheck.pc51.com/crm/sso/start?storeKey=US-DEMO&amp;view=results"
+   referrerpolicy="no-referrer">查看店铺监测</a>
+```
+
+点击后由浏览器直接导航，不使用跨域 `fetch`、iframe，也不从 HTTP 页面兑换票据。CRM 的 HTTPS 回调需要识别当前登录用户；不要假定浏览器会把 HTTP 页面的 localStorage 登录 Token 自动带给回调。
 
 ### CRM 后端需要做的事
 
@@ -310,6 +321,8 @@ https://amzcheck.pc51.com/crm/sso/start?storeKey=US-DEMO&checkId=reviews&view=da
 ```
 
 `subject` 使用 CRM 内部稳定、不含个人信息的用户标识，长度 1–128 字符，不含首尾空白或控制字符。POST 使用 `Content-Type: application/json`，正文不超过 8192 字节，不接受压缩正文或未知字段。
+
+HTTP 来源页面不会放宽后续校验：回调证书必须覆盖回调域名，签票只由 CRM 后端完成，票据只在发起跳转的浏览器中兑换。若回调出现证书错误，应由 CRM 维护人员修正证书配置，不关闭 TLS 校验或改用 HTTP 回调。
 
 ### 有效期与会话规则
 
