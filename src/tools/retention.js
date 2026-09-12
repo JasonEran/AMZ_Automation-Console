@@ -51,7 +51,7 @@ export function retentionClass(relative) {
   // Baselines and the CRM idempotency ledger are durable state. Channel JSONL
   // files are audit trails and must not grow forever merely because they live
   // under channels/.
-  if (posix === 'runtime/ads-monitoring.json'
+  if (/^runtime\/(?:ads-monitoring|ads-rules|users|store-registry|ui-config)\.json$/.test(posix)
       || /^state\//.test(posix)
       || /^channels\/crm\/ledger\.json$/.test(posix)
       || /(^|\/)latest\.json$/.test(posix)) return 'keep';

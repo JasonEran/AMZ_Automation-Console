@@ -25,9 +25,10 @@ import { isConfigMissingError, truncate } from '../lib/ziniao.js';
 /**
  * Item 5: per-ASIN routine check.
  *
- * Unlike the other seven this reads *public* product detail pages, one per ASIN,
+ * Unlike the other eight this reads *public* product detail pages, one per ASIN,
  * so it reuses the matching store browser for a bounded group of ASINs before
- * releasing renderer memory. Rating is compared against the previous run.
+ * releasing renderer memory. Rating is compared against the previous Beijing
+ * calendar day's baseline.
  */
 
 const CHECK_ID = 'asin-health';

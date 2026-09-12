@@ -2,9 +2,11 @@
 
 本约定用于把 AMZ Guard 的结构化巡检结果准备成可由现有 CRM 审核、导入的交换文件。参考系统仅用于只读了解页面字段；项目不会保存参考账号，不会调用未文档化的写接口，也不会向参考环境提交测试或业务数据。
 
+本文只说明出站导出与推送。CRM 主动读取监测结果及单店免密跳转使用独立凭据，见 [CRM API 文档](CRM_API.md)；启用读 API 不会启用本页的网络推送。
+
 ## 当前交付方式
 
-每份巡检报告落盘后，同时在 `out/channels/crm-export/YYYY-MM-DD/` 生成：
+巡检编排调用 CRM 通道时（即使网络推送关闭），会在 `out/channels/crm-export/YYYY-MM-DD/` 生成：
 
 - 带 UTF-8 BOM 的 CSV，便于中文 Excel 和常见 CRM 导入器读取。
 - 同名 manifest，记录兼容档案、列顺序、批次和行数。
@@ -22,11 +24,11 @@ disposition, requested_quantity, shipped_quantity, removal_fee, currency,
 status, health_score, severity, is_normal, anomaly_reason, checked_at
 ```
 
-`source_id` 是稳定、不可逆的幂等键。相同店铺、检查项和实体不会因重试产生不同身份；内容变化仍可由正式 upsert 通道审计。
+`source_id` 是稳定、不可逆的幂等键。相同店铺、检查项和实体不会因同批重试产生不同身份；实体键还绑定站点及 ASIN/SKU/订单等归属字段。成功账本按完整记录内容摘要去重，其中包括批次与采集时间；后续新批次可再次 upsert 同一实体，不代表只在业务字段变化时才发网络请求。
 
 ## 正式推送启用门槛
 
-当前模式是 `local-export-only`。在 CRM 负责人提供以下内容前，网络推送保持关闭：
+示例配置默认关闭网络推送，本地兼容 manifest 的模式为 `local-export-only`；这个字段不代表生产通道当前是否启用，网络状态需另查配置和投递审计。在 CRM 负责人提供以下内容前，网络推送保持关闭：
 
 1. 正式且使用 HTTPS 的导入 endpoint。
 2. 认证凭据的受保护 EnvironmentFile 配置方式。

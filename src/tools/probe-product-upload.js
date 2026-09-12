@@ -2,6 +2,7 @@
 import { PRODUCT_UPLOAD_PAGE } from '../lib/product-upload.js';
 import { redactText } from '../lib/redact.js';
 import { acquireRunLock, releaseRunLock } from '../checks/run.js';
+import { refreshSelectedStores } from '../lib/config.js';
 
 export async function runProductUploadProbe({ config, store, logger, zn }) {
   if (zn?.securityCapabilities?.officialZiniaoWebDriverHttp !== true) {
@@ -11,6 +12,7 @@ export async function runProductUploadProbe({ config, store, logger, zn }) {
   let lease = null;
   try {
     lease = acquireRunLock({ outDir: config.outDir, label: `product-upload-probe:${store.key}` });
+    [store] = refreshSelectedStores(config, [store]);
     const opened = await zn.storeOpen({
       name: store.name,
       id: store.id,

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { acquireRunLock, releaseRunLock } from '../checks/run.js';
 import { createZiniao } from '../lib/ziniao-factory.js';
-import { loadConfig } from '../lib/config.js';
+import { loadConfig, refreshSelectedStores } from '../lib/config.js';
 import { createLogger } from '../lib/log.js';
 import { redactText } from '../lib/redact.js';
 import { readState, mutateState, HOUR } from './store.js';
@@ -40,6 +40,7 @@ export async function runIntelligenceWorker({config,stores,logger,zn:provided,no
   try{lease=acquireRunLock({outDir:config.outDir,label:'intelligence'});}catch(e){if(e.code==='RUN_ALREADY_ACTIVE')return defer('巡检或上传正在使用店铺会话，已延后');throw e;}
   let storeId,zn,heartbeat,runId=randomUUID();
   try {
+    stores=refreshSelectedStores(config,stores);
     state=readState(config.outDir);target=nextTarget(state,now);
     if(!target)return {processed:false,reason:'already-completed'};
     const store=stores.find(s=>s.key===target.storeKey&&String(s.market).toUpperCase()==='US'&&s.enabled!==false);

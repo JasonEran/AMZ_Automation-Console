@@ -5,13 +5,16 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { hasConfiguredDingTalk } from './lib/alert.js';
-import { validateAdsNameContains, writeAdsRules } from './lib/ads-rules.js';
+import { readAdsRules, validateAdsNameContains, writeAdsRules } from './lib/ads-rules.js';
 import { readAdsMonitoring } from './lib/ads-monitoring.js';
 import { CHECKS, SLOTS } from './checks/registry.js';
 import { reviewsByDate } from './checks/definitions.js';
 import { isReviewResult, reviewDateSummary, reviewEvidencePages, latestReviewEvidence } from './lib/review-evidence.js';
 import { filterCurrentAsinResults, loadAsins } from './checks/asin-health.js';
 import { loadConfig } from './lib/config.js';
+import { createStoreRegistry, storeBindingChanged } from './lib/store-registry.js';
+import { acquireRunLock, releaseRunLock } from './checks/run.js';
+import { createUiConfig } from './lib/ui-config.js';
 import { configuredHint } from './lib/configured-hints.js';
 import { loadZiniaoCredentials } from './lib/credentials.js';
 import { latestEffectiveCheck, latestStoreSnapshots, readCheckHistory, storeHistoryDays, validHistoryDate, historyRecordsPage } from './lib/dashboard-history.js';
@@ -38,6 +41,8 @@ import {
 import { bjHuman, bjIso, bjParts, detectSlot, parseHHMM } from './lib/time.js';
 import { DASHBOARD_HTML } from './web/dashboard.js';
 import { intelligenceRequest } from './intelligence/http.js';
+import { createCrmHttp } from './crm/http.js';
+import { createConfigurationHttp } from './web/configuration-http.js';
 
 const INTELLIGENCE_ASSETS = new Map([
   ['/assets/intelligence.css', ['intelligence.css', 'text/css; charset=utf-8']],
@@ -47,11 +52,11 @@ const INTELLIGENCE_ASSETS = new Map([
 process.umask(0o077);
 
 /**
- * Dashboard + ingest API. Zero dependencies so it deploys by copying files.
+ * Dashboard + ingest API. Uses the repository modules and installed dependencies.
  *
  * Routes:
  *   GET  /                     the dashboard page
- *   GET  /api/status           all 8 checks, rolled up
+ *   GET  /api/status           all 9 checks, rolled up
  *   GET  /api/check/:id        one check's latest full report
  *   POST /api/ingest           accept a report from a collector machine
  *   GET  /api/health           liveness
@@ -59,6 +64,8 @@ process.umask(0o077);
  */
 
 const { config, stores, storesPath } = loadConfig();
+const storeRegistry = createStoreRegistry({ outDir: config.outDir, storesPath, defaultHost: config.storeHealth.defaultHost });
+const uiConfig = createUiConfig({ outDir: config.outDir, defaults: config.dashboard || {} });
 const PORT = Number(process.env.PORT || 4173);
 const HOST = process.env.HOST || '127.0.0.1';
 const INGEST_TOKEN = process.env.AMZGUARD_INGEST_TOKEN || process.env.INGEST_TOKEN || '';
@@ -350,17 +357,19 @@ function html(res, code, body) {
   res.end(body);
 }
 
-function disabledStoreKeys() {
-  try {
-    const raw = JSON.parse(fs.readFileSync(storesPath, 'utf8'));
-    const entries = Array.isArray(raw) ? raw : raw.stores || [];
-    return new Set(entries.filter((store) => store?.enabled === false).flatMap((store) =>
-      [store.key, store.name, store.id].filter(Boolean),
-    ));
-  } catch { return new Set(); }
+const disabledStores = new Set();
+function refreshStores() {
+  const snapshot = storeRegistry.read(), rules = readAdsRules(config.outDir);
+  disabledStores.clear();
+  for (const store of snapshot.stores.filter(store => !store.enabled)) {
+    for (const key of [store.key, store.name, store.id].filter(Boolean)) disabledStores.add(key);
+  }
+  // Keep the array identity used by request handlers, without reloading secrets.
+  stores.splice(0, stores.length, ...snapshot.stores.filter(store => store.enabled).map(store => ({
+    ...store, adsNameContains: rules.has(store.key) ? rules.get(store.key) : store.adsNameContains,
+  })));
 }
-
-const disabledStores = disabledStoreKeys();
+refreshStores();
 
 function readLatest(checkId) {
   if (!CHECK_IDS.has(checkId)) return null;
@@ -892,7 +901,7 @@ function buildStores(checks) {
     const actionState = worstAction(actions);
     return {
       key: store.key,
-      name: store.name || store.key,
+      name: store.displayName || store.name || store.key,
       market: store.market || '',
       discovered: Boolean(store.discovered),
       state,
@@ -1078,7 +1087,7 @@ function status() {
     if (!['BUSINESS', 'COLLECTION'].includes(cell.actionState)) return [];
     return [{
       storeKey: store.key,
-      storeName: store.name,
+      storeName: store.displayName || store.name || store.key,
       market: store.market,
       checkId: def.id,
       checkNo: def.no,
@@ -1404,7 +1413,7 @@ function adsRulesContext(req) {
     canManage: validAdminRole(req),
     rules: stores.map((store) => ({
       storeKey: store.key,
-      storeName: store.name || store.key,
+      storeName: store.displayName || store.name || store.key,
       nameContains: String(store.adsNameContains || ''),
       configured: Boolean(String(store.adsNameContains || '').trim()),
     })),
@@ -1515,7 +1524,7 @@ function productUploadApi(url, authorized = false) {
       stageExpiresMinutes: 30,
     },
     stores: stores.filter((store) => store.enabled !== false).map((store) => ({
-      key: String(store.key), name: String(store.name || store.key), market: String(store.market || 'US'),
+      key: String(store.key), name: String(store.displayName || store.name || store.key), market: String(store.market || 'US'),
     })),
     jobs: filteredJobs.slice(start, start + pageSize).map(publicUploadJob),
     resultSummary: summarizeProductUploadJobs(filteredJobs),
@@ -1547,21 +1556,34 @@ async function stageProductUploadRequest(req, res) {
   if (!hasUploadCapacity(storeKey, declaredBytes)) return json(res, 429, { ok: false, error: 'upload queue or storage capacity reached' });
   if (!uploadStageAllowed(req)) return json(res, 429, { ok: false, error: 'upload staging temporarily limited' });
   const originalName = decodeHeader(req.headers['x-amzguard-file-name']);
-  let buffer;
+  let buffer, configurationLease;
   try {
     try { buffer = await readBufferBody(req, PRODUCT_UPLOAD_MAX_BYTES); }
     catch { return json(res, 400, { ok: false, error: 'invalid or oversized upload body' }); }
+    if (!validProductUploadRole(req)) return json(res, 403, { ok: false, error: 'product upload role required' });
     inspectProductUploadFile({ originalName, buffer });
+    // A slow upload body must not stage against a store binding changed while
+    // it was in transit. Hold the collector lease only for this local commit.
+    configurationLease = acquireRunLock({ outDir: config.outDir, label: 'product-upload-staging' });
+    refreshStores();
+    const currentStore = stores.find(candidate => candidate.key === storeKey);
+    if (!currentStore || storeBindingChanged(store, currentStore)) {
+      return json(res, 409, { ok: false, error: '店铺绑定或启用状态已变化，请重载并重新选择文件' });
+    }
     const job = stageProductUpload({
-      outDir: config.outDir, store, originalName, buffer,
+      outDir: config.outDir, store: currentStore, originalName, buffer,
       actor: operatorIdentity(req),
     });
     return json(res, 201, { ok: true, job: publicUploadJob(job) });
   } catch (error) {
-    return json(res, 400, { ok: false, error: safeData(String(error?.message || error)) });
+    return json(res, error?.code === 'RUN_ALREADY_ACTIVE' ? 409 : 400,
+      { ok: false, error: error?.code === 'RUN_ALREADY_ACTIVE' ? '监测或上传工作者正在运行，请稍后重新暂存文件' : safeData(String(error?.message || error)) });
   } finally {
-    if (buffer) buffer.fill(0);
-    releaseUploadStage(req);
+    try { if (configurationLease) releaseRunLock(configurationLease); }
+    finally {
+      if (buffer) buffer.fill(0);
+      releaseUploadStage(req);
+    }
   }
 }
 
@@ -1577,6 +1599,7 @@ async function confirmProductUploadRequest(req, res) {
   let payload;
   try { payload = JSON.parse(await readBody(req, 16 * 1024)); }
   catch { return json(res, 400, { ok: false, error: 'invalid JSON payload' }); }
+  if (!validProductUploadRole(req)) return json(res, 403, { ok: false, error: 'product upload role required' });
   const username = sessionClaims(req)?.username || '';
   if (!userStore.verifyPassword(username, String(payload.password || ''))) {
     payload.password = '';
@@ -1587,6 +1610,10 @@ async function confirmProductUploadRequest(req, res) {
   loginFailures.delete(failure.ip);
   try {
     const current = readProductUploadJob({ outDir: config.outDir, jobId: String(payload.jobId || '') });
+    refreshStores();
+    if (!stores.some(store => store.key === current.store.key)) {
+      return json(res, 409, { ok: false, error: '店铺已停用或不存在，不能确认上传任务' });
+    }
     const challenge = String(payload.confirmationChallenge || '');
     if (
       !safeEqual(challenge, uploadConfirmationChallenge(current))
@@ -1728,12 +1755,22 @@ function serveShot(res, rel) {
   res.end(buf);
 }
 
+// CRM sessions are handled entirely before local Dashboard authentication.
+// Re-read only the non-secret store registry to honor removals/disabled stores.
+const crmRequest = createCrmHttp({ outDir: config.outDir, staleAfterMs: STALE_AFTER_MS,
+  stores: () => storeRegistry.read().stores.map(store => ({
+    key: store.key, name: store.displayName || store.name || store.key, market: store.market, enabled: store.enabled,
+  })), isSecureRequest, clientIp });
+const configurationRequest = createConfigurationHttp({ outDir: config.outDir, registry: storeRegistry, uiConfig,
+  json, readJsonRequest, validAdminRole, requireProtectedMutation, csrfToken, sessionClaims, refreshStores });
+
 const server = http.createServer(async (req, res) => {
   try {
     applySecurityHeaders(req, res);
     if (String(req.url || '').length > 4096) return json(res, 414, { ok: false, error: 'URI too long' });
     const url = new URL(req.url, 'http://localhost');
     const p = url.pathname;
+    if (await crmRequest(req, res, url)) return;
     if (req.method === 'GET' && p === '/api/health') {
       return json(res, 200, { ok: true, at: bjIso() });
     }
@@ -1780,6 +1817,8 @@ const server = http.createServer(async (req, res) => {
       }
       return redirect(res, '/login');
     }
+    if (await configurationRequest(req, res, url)) return;
+    refreshStores();
     if (req.method === 'GET' && (p === '/' || p === '/index.html')) {
       const html = DASHBOARD_HTML;
       res.writeHead(200, {

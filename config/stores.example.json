@@ -1,16 +1,19 @@
 {
   "_comment": [
     "复制为 config/stores.json 后填入真实店铺。stores.json 已被 .gitignore 忽略。",
-    "name  = 紫鸟里的店铺名称（store open --name 用它）；跑 `npm run stores` 可列出可用名称。",
-    "id    = 紫鸟 storeId，填了就优先用 id（比按名匹配稳）。name/id 至少填一个。",
+    "管理员可在 Dashboard 店铺配置页维护；首次保存后以 out/runtime/store-registry.json 为唯一来源，保留本文件作为 bootstrap。",
+    "key = 稳定监测标识，创建后不可改；displayName = 展示名称，可独立修改而不改变紫鸟匹配。",
+    "name  = 紫鸟里的店铺名称，用于未填写 id 时匹配店铺；跑 `npm run stores` 可列出可用名称。",
+    "id    = 紫鸟数字 browserId，填了就优先用 id（比按名匹配稳）。name/id 至少填一个，不填写 browserOauth 或凭据。",
     "host  = 该店对应的 Seller Central 站点域名，默认 sellercentral.amazon.com。",
     "enabled = false 可临时跳过该店。",
-    "adsNameContains = 广告检查只统计名称包含该特征的活动；必须配置，可在 Dashboard 广告值守页修改。"
+    "adsNameContains = 默认限定广告组合名称，联合读取匹配组合及其全部子活动；旧 campaigns 路径才限定活动名称。必须配置，可在 Dashboard 广告值守页修改。"
   ],
   "stores": [
     {
       "key": "US-01",
       "name": "替换为紫鸟店铺名称",
+      "displayName": "美国示例店铺",
       "id": "",
       "host": "sellercentral.amazon.com",
       "market": "US",
@@ -20,6 +23,7 @@
     {
       "key": "JP-01",
       "name": "替换为紫鸟店铺名称",
+      "displayName": "日本示例店铺",
       "id": "",
       "host": "sellercentral.amazon.co.jp",
       "market": "JP",

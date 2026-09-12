@@ -1,0 +1,5849 @@
+{
+  "openapi": "3.1.1",
+  "jsonSchemaDialect": "https://spec.openapis.org/oas/3.1/dialect/base",
+  "info": {
+    "title": "AMZ Automation Console CRM Read API",
+    "version": "1.0",
+    "description": "Independent read-only CRM integration for nine store-monitoring checks. Static contract of the current implementation; not a claim that this revision is deployed. HTTPS and exact configured Host are required for every listed route. No CORS is enabled. This is opaque bearer plus browser-bound ticket/session authentication, not OAuth. Success JSON envelopes and application/problem+json errors are distinct. Credentials in query keys containing token, ticket, password, secret or authorization are rejected. Unknown/repeated query parameters are rejected. No route starts sampling or writes Amazon/CRM business data. Structured output uses explicit allowlists with rule-based text redaction, not arbitrary-prose personal-data classification."
+  },
+  "servers": [
+    {
+      "url": "https://amzcheck.pc51.com",
+      "description": "CRM integration target. HTTPS and this configured canonical Host are required. Query /api/crm/v1 for the serving API capabilities; the checked-in contract alone does not establish which revision is deployed."
+    }
+  ],
+  "tags": [
+    {
+      "name": "Read API"
+    },
+    {
+      "name": "Browser SSO"
+    }
+  ],
+  "paths": {
+    "/api/crm/v1": {
+      "get": {
+        "operationId": "getCrmCapabilities",
+        "summary": "Get available capabilities",
+        "description": "Reads only saved nine-check data. Does not start collection, contact Amazon, send CRM updates or include competitive intelligence. An Authorization header, if present at all, takes precedence over the CRM session cookie; invalid headers do not fall back to cookies.",
+        "tags": [
+          "Read API"
+        ],
+        "security": [
+          {
+            "CrmBearer": []
+          },
+          {
+            "CrmSession": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/Cache-Control"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilitiesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "405": {
+            "$ref": "#/components/responses/Problem405"
+          },
+          "421": {
+            "$ref": "#/components/responses/Problem421"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        },
+        "x-rejectUnknownQueryParameters": true,
+        "x-rejectDuplicateQueryParameters": true
+      }
+    },
+    "/api/crm/v1/openapi.json": {
+      "get": {
+        "operationId": "getCrmOpenApi",
+        "summary": "Get this machine contract",
+        "description": "Returns raw OpenAPI JSON under the same CRM authentication and HTTPS rules. No success envelope.",
+        "tags": [
+          "Read API"
+        ],
+        "security": [
+          {
+            "CrmBearer": []
+          },
+          {
+            "CrmSession": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/Cache-Control"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenApiDocument"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "405": {
+            "$ref": "#/components/responses/Problem405"
+          },
+          "421": {
+            "$ref": "#/components/responses/Problem421"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        },
+        "x-rejectUnknownQueryParameters": true,
+        "x-rejectDuplicateQueryParameters": true
+      }
+    },
+    "/api/crm/v1/stores": {
+      "get": {
+        "operationId": "listCrmStores",
+        "summary": "List authorized enabled stores",
+        "description": "Reads only saved nine-check data. Does not start collection, contact Amazon, send CRM updates or include competitive intelligence. An Authorization header, if present at all, takes precedence over the CRM session cookie; invalid headers do not fall back to cookies.",
+        "tags": [
+          "Read API"
+        ],
+        "security": [
+          {
+            "CrmBearer": []
+          },
+          {
+            "CrmSession": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/Cache-Control"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoresResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400_2"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "405": {
+            "$ref": "#/components/responses/Problem405"
+          },
+          "421": {
+            "$ref": "#/components/responses/Problem421"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        },
+        "x-rejectUnknownQueryParameters": true,
+        "x-rejectDuplicateQueryParameters": true
+      }
+    },
+    "/api/crm/v1/stores/{storeKey}/results": {
+      "get": {
+        "operationId": "getCrmStoreResults",
+        "summary": "Get nine-check result summaries",
+        "description": "Reads only saved nine-check data. Does not start collection, contact Amazon, send CRM updates or include competitive intelligence. An Authorization header, if present at all, takes precedence over the CRM session cookie; invalid headers do not fall back to cookies. Latest effective results are selected independently by store/check; targeted ASIN results retain their true original run. Any conflicting stored copy affecting this store fails the request.",
+        "tags": [
+          "Read API"
+        ],
+        "security": [
+          {
+            "CrmBearer": []
+          },
+          {
+            "CrmSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/StoreKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/Cache-Control"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400_3"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "405": {
+            "$ref": "#/components/responses/Problem405"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "421": {
+            "$ref": "#/components/responses/Problem421"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        },
+        "x-rejectUnknownQueryParameters": true,
+        "x-rejectDuplicateQueryParameters": true
+      }
+    },
+    "/api/crm/v1/stores/{storeKey}/checks/{checkId}/runs": {
+      "get": {
+        "operationId": "listCrmCheckRuns",
+        "summary": "List stored runs for one store and check",
+        "description": "Reads only saved nine-check data. Does not start collection, contact Amazon, send CRM updates or include competitive intelligence. An Authorization header, if present at all, takes precedence over the CRM session cookie; invalid headers do not fall back to cookies. Run date filtering uses each result collection date in Beijing time. No query-based status or publication-date filter exists. Conflicting copies fail closed.",
+        "tags": [
+          "Read API"
+        ],
+        "security": [
+          {
+            "CrmBearer": []
+          },
+          {
+            "CrmSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/StoreKey"
+          },
+          {
+            "$ref": "#/components/parameters/CheckId"
+          },
+          {
+            "$ref": "#/components/parameters/From"
+          },
+          {
+            "$ref": "#/components/parameters/To"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/Cache-Control"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400_3"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "405": {
+            "$ref": "#/components/responses/Problem405"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "421": {
+            "$ref": "#/components/responses/Problem421"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        },
+        "x-rejectUnknownQueryParameters": true,
+        "x-rejectDuplicateQueryParameters": true
+      }
+    },
+    "/api/crm/v1/stores/{storeKey}/checks/{checkId}/data": {
+      "get": {
+        "operationId": "getCrmCheckData",
+        "summary": "Page through saved safe business records",
+        "description": "Reads only saved nine-check data. Does not start collection, contact Amazon, send CRM updates or include competitive intelligence. An Authorization header, if present at all, takes precedence over the CRM session cookie; invalid headers do not fall back to cookies. runId is required. All valid saved, allowlisted records are available by pagination, including all saved VOC child records; this does not assert complete Amazon collection. Fix snapshotId across pages to detect replacement. Conflicting same-ID files return 409 rather than selecting a copy. Inbox exposes result summaries only.",
+        "tags": [
+          "Read API"
+        ],
+        "security": [
+          {
+            "CrmBearer": []
+          },
+          {
+            "CrmSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/StoreKey"
+          },
+          {
+            "$ref": "#/components/parameters/CheckId"
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          },
+          {
+            "$ref": "#/components/parameters/SnapshotId"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/Cache-Control"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400_3"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "405": {
+            "$ref": "#/components/responses/Problem405"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409_2"
+          },
+          "421": {
+            "$ref": "#/components/responses/Problem421"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        },
+        "x-rejectUnknownQueryParameters": true,
+        "x-rejectDuplicateQueryParameters": true
+      }
+    },
+    "/crm/sso/start": {
+      "get": {
+        "operationId": "beginCrmBrowserSso",
+        "summary": "Start browser-bound CRM login",
+        "description": "No existing credential is required. Creates a 120-second browser challenge and binding cookie, then redirects to a fixed configured CRM callback. The CRM must authenticate its subject and authorize the requested store before its backend issues a ticket. Never accept a caller-supplied callback URL.",
+        "tags": [
+          "Browser SSO"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "name": "storeKey",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/StoreKey"
+            }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/View"
+            }
+          },
+          {
+            "name": "checkId",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/CheckId"
+            }
+          }
+        ],
+        "responses": {
+          "303": {
+            "description": "Browser challenge created. Redirect to the configured CRM callback; no body. Separate HttpOnly browser binding lasts 120 seconds.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/Cache-Control"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Location": {
+                "$ref": "#/components/headers/Location"
+              },
+              "Set-Cookie": {
+                "$ref": "#/components/headers/Set-Cookie"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400_4"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "405": {
+            "$ref": "#/components/responses/Problem405"
+          },
+          "421": {
+            "$ref": "#/components/responses/Problem421"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503_2"
+          }
+        },
+        "x-rejectUnknownQueryParameters": true,
+        "x-rejectDuplicateQueryParameters": true,
+        "x-additionalRateLimitPerMinute": 10
+      }
+    },
+    "/api/crm/v1/sso/tickets": {
+      "post": {
+        "operationId": "issueCrmBrowserTicket",
+        "summary": "Issue a single-use browser ticket",
+        "description": "CRM backend only. Bearer authentication is mandatory; a browser session cannot issue tickets. challengeId and all destination fields must match the browser challenge. One challenge permits one issued ticket. Ticket expires after at most 60 seconds and no later than its challenge. No caller-selected redirect is accepted.",
+        "tags": [
+          "Browser SSO"
+        ],
+        "security": [
+          {
+            "CrmBearer": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/Cache-Control"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400_5"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401_2"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403_2"
+          },
+          "405": {
+            "$ref": "#/components/responses/Problem405"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409_3"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Problem415"
+          },
+          "421": {
+            "$ref": "#/components/responses/Problem421"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503_3"
+          }
+        },
+        "x-rejectUnknownQueryParameters": true,
+        "x-rejectDuplicateQueryParameters": true,
+        "requestBody": {
+          "required": true,
+          "description": "JSON object only; no unknown fields; maximum 8192 bytes. Content-Encoding must be absent or identity.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketRequest"
+              }
+            }
+          }
+        },
+        "x-additionalRateLimitPerMinute": 20
+      }
+    },
+    "/crm/sso": {
+      "get": {
+        "operationId": "getCrmSsoCompletion",
+        "summary": "Load ticket exchange page",
+        "description": "Loads HTML that reads the ticket from the URL fragment and POSTs JSON to /crm/sso/exchange. URL fragments are not HTTP query parameters. Every query parameter is rejected. No ticket or binding cookie is returned in HTML.",
+        "tags": [
+          "Browser SSO"
+        ],
+        "security": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "HTML document.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/Cache-Control"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              }
+            },
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400_6"
+          },
+          "405": {
+            "$ref": "#/components/responses/Problem405"
+          },
+          "421": {
+            "$ref": "#/components/responses/Problem421"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        },
+        "x-rejectUnknownQueryParameters": true,
+        "x-rejectDuplicateQueryParameters": true
+      }
+    },
+    "/crm/sso/exchange": {
+      "post": {
+        "operationId": "exchangeCrmBrowserTicket",
+        "summary": "Exchange a browser-bound ticket",
+        "description": "Requires the independent binding cookie created by sso/start, a valid single-use ticket in JSON, and exact same-origin headers. Consumes the ticket synchronously and creates a 30-minute CRM-only, single-store session. Clears the binding cookie. Tickets/sessions are in process memory; restart or CRM configuration change invalidates them.",
+        "tags": [
+          "Browser SSO"
+        ],
+        "security": [
+          {
+            "CrmBrowserBinding": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/SecFetchSite"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/Cache-Control"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Set-Cookie": {
+                "$ref": "#/components/headers/Set-Cookie"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExchangeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400_7"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401_3"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403_3"
+          },
+          "405": {
+            "$ref": "#/components/responses/Problem405"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Problem415"
+          },
+          "421": {
+            "$ref": "#/components/responses/Problem421"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503_3"
+          }
+        },
+        "x-rejectUnknownQueryParameters": true,
+        "x-rejectDuplicateQueryParameters": true,
+        "requestBody": {
+          "required": true,
+          "description": "JSON object only; no unknown fields; maximum 8192 bytes. Content-Encoding must be absent or identity.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExchangeRequest"
+              }
+            }
+          }
+        },
+        "x-additionalRateLimitPerMinute": 20
+      }
+    },
+    "/crm/logout": {
+      "post": {
+        "operationId": "logoutCrmBrowser",
+        "summary": "End local CRM browser session",
+        "description": "Requires same-origin JSON {}. Missing, expired or invalid session tokens still produce loggedOut=true. Clears only the CRM cookie and local CRM session; does not change Dashboard accounts or sessions.",
+        "tags": [
+          "Browser SSO"
+        ],
+        "security": [
+          {},
+          {
+            "CrmSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/SecFetchSite"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/Cache-Control"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              },
+              "Set-Cookie": {
+                "$ref": "#/components/headers/Set-Cookie"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogoutResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400_7"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403_4"
+          },
+          "405": {
+            "$ref": "#/components/responses/Problem405"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Problem415"
+          },
+          "421": {
+            "$ref": "#/components/responses/Problem421"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        },
+        "x-rejectUnknownQueryParameters": true,
+        "x-rejectDuplicateQueryParameters": true,
+        "requestBody": {
+          "required": true,
+          "description": "JSON object only; no unknown fields; maximum 8192 bytes. Content-Encoding must be absent or identity.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogoutRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/crm": {
+      "get": {
+        "operationId": "getCrmPortalWithoutSlash",
+        "summary": "Load CRM read-only portal",
+        "description": "Requires the dedicated CRM session cookie; Dashboard cookies and bearer headers do not authorize this page. No query parameters.",
+        "tags": [
+          "Browser SSO"
+        ],
+        "security": [
+          {
+            "CrmSession": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "HTML document.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/Cache-Control"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              }
+            },
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401_4"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "405": {
+            "$ref": "#/components/responses/Problem405"
+          },
+          "421": {
+            "$ref": "#/components/responses/Problem421"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        },
+        "x-rejectUnknownQueryParameters": true,
+        "x-rejectDuplicateQueryParameters": true
+      }
+    },
+    "/crm/": {
+      "get": {
+        "operationId": "getCrmPortal",
+        "summary": "Load CRM read-only portal",
+        "description": "Requires the dedicated CRM session cookie; Dashboard cookies and bearer headers do not authorize this page. No query parameters.",
+        "tags": [
+          "Browser SSO"
+        ],
+        "security": [
+          {
+            "CrmSession": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "HTML document.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/Cache-Control"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              }
+            },
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401_4"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "405": {
+            "$ref": "#/components/responses/Problem405"
+          },
+          "421": {
+            "$ref": "#/components/responses/Problem421"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        },
+        "x-rejectUnknownQueryParameters": true,
+        "x-rejectDuplicateQueryParameters": true
+      }
+    },
+    "/crm/session": {
+      "get": {
+        "operationId": "getCrmBrowserSession",
+        "summary": "Get current browser scope",
+        "description": "Requires the dedicated CRM cookie and exposes only store/check/view navigation, expiry and readOnly. Subject, client credentials and Dashboard roles are not returned.",
+        "tags": [
+          "Browser SSO"
+        ],
+        "security": [
+          {
+            "CrmSession": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/X-Request-Id"
+              },
+              "X-RateLimit-Limit": {
+                "$ref": "#/components/headers/X-RateLimit-Limit"
+              },
+              "X-RateLimit-Remaining": {
+                "$ref": "#/components/headers/X-RateLimit-Remaining"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/Cache-Control"
+              },
+              "Referrer-Policy": {
+                "$ref": "#/components/headers/Referrer-Policy"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem401_4"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "405": {
+            "$ref": "#/components/responses/Problem405"
+          },
+          "421": {
+            "$ref": "#/components/responses/Problem421"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem503"
+          }
+        },
+        "x-rejectUnknownQueryParameters": true,
+        "x-rejectDuplicateQueryParameters": true
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "CrmBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Configured opaque machine API token in Authorization: Bearer <token>, with exactly one space. Scheme matching is case-insensitive; the token must match exactly. Not JWT/OAuth. Cookies/query parameters cannot substitute for bearer on ticket issuance. On dual-auth API routes a present invalid Authorization header prevents cookie fallback."
+      },
+      "CrmSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-amzguard_crm",
+        "description": "Dedicated opaque browser session from ticket exchange; one store, read-only, 30 minutes, Secure/HttpOnly/Path=/SameSite=Lax. Independent of Dashboard authentication. Scope is revalidated on access."
+      },
+      "CrmBrowserBinding": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-amzguard_crm_binding",
+        "description": "Separate 120-second HttpOnly/Secure browser-binding cookie from sso/start. A valid ticket alone cannot be exchanged without this cookie."
+      }
+    },
+    "schemas": {
+      "CheckId": {
+        "type": "string",
+        "enum": [
+          "store-health",
+          "performance",
+          "feedback",
+          "reviews",
+          "asin-health",
+          "outlet",
+          "voc",
+          "ads-status",
+          "inbox"
+        ]
+      },
+      "BusinessCheckId": {
+        "type": "string",
+        "enum": [
+          "store-health",
+          "performance",
+          "feedback",
+          "reviews",
+          "asin-health",
+          "outlet",
+          "voc",
+          "ads-status"
+        ]
+      },
+      "StoreKey": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+      },
+      "View": {
+        "type": "string",
+        "enum": [
+          "results",
+          "data"
+        ],
+        "description": "Initial navigation hint only; storeKey is the authorization scope. A session can read all nine checks for its one authorized store."
+      },
+      "Date": {
+        "type": "string",
+        "format": "date",
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+      },
+      "Timestamp": {
+        "type": "string",
+        "format": "date-time",
+        "description": "ISO 8601 UTC timestamp. Null, where permitted, means the saved source did not have a valid timestamp."
+      },
+      "StatusCode": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{0,99}$",
+        "description": "Saved status normalized to this syntax; malformed or missing values become UNKNOWN. Future well-formed status codes are retained; clients must not treat an unfamiliar code as healthy."
+      },
+      "Severity": {
+        "type": "string",
+        "enum": [
+          "OK",
+          "WARN",
+          "CRITICAL",
+          "ERROR"
+        ]
+      },
+      "Asin": {
+        "type": "string",
+        "pattern": "^[A-Z0-9]{10}$"
+      },
+      "RunId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,299}$",
+        "description": "Select an ID returned by runs. Safe saved IDs are retained; unsafe IDs become opaque:<64 lowercase hex>; absent IDs become stable legacy:<64 lowercase hex>. Derived IDs use SHA-256 of canonical JSON encoding. No synthetic combined-latest run is selectable."
+      },
+      "RunIdSource": {
+        "type": "string",
+        "enum": [
+          "report",
+          "opaque-report-id",
+          "legacy-report"
+        ]
+      },
+      "SnapshotId": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$",
+        "description": "SHA-256 of the canonical JSON of the entire saved report, including other stores if present. Only the requested authorized store is projected. Bind subsequent data pages to this digest to detect replacement."
+      },
+      "OpaqueCredential": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{43}$",
+        "writeOnly": true,
+        "description": "Opaque random value; never log or put in a query string. This is not a JWT or OAuth credential."
+      },
+      "Scalar": {
+        "type": [
+          "string",
+          "number",
+          "boolean",
+          "null"
+        ]
+      },
+      "BusinessValue": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/Scalar"
+          },
+          {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Scalar"
+            }
+          }
+        ],
+        "description": "Saved allowlisted scalar or array of scalars, after text redaction. Nested objects are omitted. Historical field types are retained rather than coerced to a semantic type."
+      },
+      "Store": {
+        "type": "object",
+        "properties": {
+          "storeKey": {
+            "$ref": "#/components/schemas/StoreKey"
+          },
+          "storeName": {
+            "type": "string"
+          },
+          "market": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "storeKey",
+          "storeName",
+          "market"
+        ],
+        "additionalProperties": false
+      },
+      "ListCoverage": {
+        "type": "object",
+        "properties": {
+          "complete": {
+            "type": [
+              "number",
+              "boolean"
+            ]
+          },
+          "total": {
+            "type": [
+              "number",
+              "boolean"
+            ]
+          },
+          "rowCount": {
+            "type": [
+              "number",
+              "boolean"
+            ]
+          },
+          "asinCount": {
+            "type": [
+              "number",
+              "boolean"
+            ]
+          },
+          "pagesRead": {
+            "type": [
+              "number",
+              "boolean"
+            ]
+          },
+          "pageSize": {
+            "type": [
+              "number",
+              "boolean"
+            ]
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "BusinessMetrics": {
+        "type": "object",
+        "properties": {
+          "abnormalTrendCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "accountHealthRating": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "accountHealthRatingDelta": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "accountHealthRatingPrevious": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "activeBusinessEventCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "aggregateSource": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "aggregateTotalAdjusted": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "amazonFulfillmentExcludedLowCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "amazonFulfillmentExclusionEvidenceAgree": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "ambiguousActionCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "asinCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "average": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "badSections": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "baseline": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "bothRatingEvidence": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "brandLowCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "businessEvidenceCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "businessStatus": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "campaignCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "checkSkipped": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "collectionStatus": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "confirmedEmpty": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "confirmedZero": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "countConflict": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "date": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "dealCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "detailFailures": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "domActivity": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "domAmazonFulfillmentExcludedLowCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "domComplete": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "domCountConflict": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "domEnabled": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "domHealthyNormalSignals": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "domMetricSignals": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "domNonzeroViolationSignals": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "domPaused": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "domRating": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "domRawTotal": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "domReliable": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "domReportedTotal": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "domReportedTotalReliable": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "domReviewCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "domTotal": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "domZeroNormalSignals": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "duplicateActionCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "enabled": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "enabledDomEmpty": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "enabledDomPositive": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "enabledExists": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "enabledFilter": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "enabledSweepComplete": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "enabledTextEmpty": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "enabledTextPositive": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "evidenceComplete": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "evidenceConflict": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "exceptionCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "excluded": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "excludedOtherStoreCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "excludedOutOfScopeCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "expected": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "hasCart": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "headerMappedRowCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "headerMappingCompleteRowCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "headerMappingIncomplete": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "historicalIgnoredCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "ignoredFilterControlCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "limited": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "listCoverageIncomplete": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "listingActive": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "listingState": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "listingStateConflict": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "lowCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "majorityRule": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "matching": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "matchingPercent": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "nameContains": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "nameFilterVerified": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "newBusinessEventCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "newCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "newLowCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "nonzeroViolationSignals": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "normalEvidenceComplete": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "opened": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "ownedLowCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "ownershipComplete": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "ownershipFiltered": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "ownershipInventoryCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "ownershipPendingAsins": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "ownershipPendingCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "ownershipReady": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "ownershipSource": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "pageNotFound": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "paginationComplete": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "paused": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "pausedDomEmpty": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "pausedDomPositive": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "pausedFilter": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "pausedSweepComplete": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "pausedTextEmpty": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "pausedTextPositive": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "pausedZero": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "poorAsins": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "poorCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "portfolioCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "prevRating": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "prevRatingDate": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "rating": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "ratingConflict": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "ratingDelta": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "recordedBusinessEventCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "recordedExceptionCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "recordedLowCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "redTotal": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "redWarnings": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "registered": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "reportedTotalGrowth": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "reportedTotalsAgree": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "reviewCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "sameDayCountsAgree": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "scanComplete": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "scopedUnavailableCorroborated": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "source": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "sourceStateConflict": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "sourceTotalConflict": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "stateSource": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "structuredComplete": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "structuredCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "textActivity": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "textActivityReliable": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "textAmazonFulfillmentExcludedLowCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "textComplete": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "textCountConflict": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "textCountCorroboratesDom": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "textEnabled": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "textHealthyNormalSignals": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "textMetricSignals": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "textNonzeroViolationSignals": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "textPaused": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "textRating": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "textRawTotal": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "textReliable": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "textReportedTotal": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "textReportedTotalReliable": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "textReviewCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "textTotal": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "textWarnings": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "textZeroNormalSignals": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "todayTotal": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "total": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "unavailable": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "unknown": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "unknownDateLowCount": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "zeroEnabledSources": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "listCoverage": {
+            "$ref": "#/components/schemas/ListCoverage"
+          }
+        },
+        "required": [],
+        "additionalProperties": false,
+        "description": "Exact output allowlist for non-Inbox metrics. A missing field was absent or not an allowed scalar shape. No raw report metrics are returned."
+      },
+      "InboxMetrics": {
+        "type": "object",
+        "properties": {
+          "badgeCount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "boldRowCount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "domDeclaredUnread": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "domNeedsResponseRows": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "domUnreadCount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "textDeclaredUnread": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "textNeedsResponsePhrases": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "textRows": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "textUnreadCount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "todayUnreadCount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "totalRows": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unreadCount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "visibleFrameCount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "confirmedEmpty": {
+            "type": "boolean"
+          },
+          "countsAgree": {
+            "type": "boolean"
+          },
+          "frameContentReadable": {
+            "type": "boolean"
+          },
+          "listOutsideMainDocument": {
+            "type": "boolean"
+          },
+          "markerVocabulary": {
+            "type": "boolean"
+          },
+          "paginationComplete": {
+            "type": "boolean"
+          },
+          "responseNeededFilter": {
+            "type": "boolean"
+          },
+          "textChromeOnly": {
+            "type": "boolean"
+          },
+          "textFilterCorroborated": {
+            "type": "boolean"
+          },
+          "date": {
+            "$ref": "#/components/schemas/Date"
+          },
+          "oldestUnreadAt": {
+            "$ref": "#/components/schemas/Date"
+          },
+          "businessStatus": {
+            "$ref": "#/components/schemas/StatusCode"
+          },
+          "collectionStatus": {
+            "$ref": "#/components/schemas/StatusCode"
+          }
+        },
+        "required": [],
+        "additionalProperties": false,
+        "description": "Only typed counts, flags and calendar dates. No message/order identifiers, message rows, subjects or free text are projected."
+      },
+      "BusinessItem": {
+        "type": "object",
+        "properties": {
+          "abnormalTrend": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "asin": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "brand": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "campaignId": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "campaignName": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "campaignStatus": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "category": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "childAsin": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "count": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "currency": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "customerIssue": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "customerIssues": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "cxHealth": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "date": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "delivery": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "detailComplete": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "detailStatus": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "disposition": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "effective": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "feedbackId": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "fnsku": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "id": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "identifier": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "isNew": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "key": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "msku": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "name": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "ncxOrders": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "ncxRatePct": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "offerId": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "orderId": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "ownership": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "ownershipAsin": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "ownershipSource": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "parentAsin": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "portfolioId": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "portfolioName": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "portfolioStatus": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "rating": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "recordId": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "relatedId": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "removalFee": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "requestDate": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "requestedQuantity": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "response": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "returnId": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "returnRatePct": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "returnReason": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "returnReasons": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "reviewId": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "sellerSku": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "sharedOwnership": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "shippedQuantity": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "sku": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "source": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "stars": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "state": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "statusText": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "text": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "title": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "toggle": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "totalOrders": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "type": {
+            "$ref": "#/components/schemas/BusinessValue"
+          },
+          "updatedAt": {
+            "$ref": "#/components/schemas/BusinessValue"
+          }
+        },
+        "required": [],
+        "additionalProperties": false,
+        "description": "Exact saved business-item allowlist. Order identifiers may remain outside Inbox. Explicit buyer identity/contact and secret fields are excluded; known private values and recognized text patterns are redacted in permitted business strings. This rule-based filter does not identify every possible personal detail in arbitrary prose. Raw body/context, internal paths and screenshots are not public fields."
+      },
+      "EvidencePart": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "landed": {
+            "type": "boolean"
+          },
+          "reliable": {
+            "type": "boolean"
+          },
+          "pageConfirmed": {
+            "type": "boolean"
+          },
+          "cardFound": {
+            "type": "boolean"
+          },
+          "complete": {
+            "type": "boolean"
+          },
+          "pageComplete": {
+            "type": "boolean"
+          },
+          "looksLikeLogin": {
+            "type": "boolean"
+          },
+          "looksBlocked": {
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/StatusCode"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lowCount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rowCount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "paused": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "available"
+        ],
+        "additionalProperties": false,
+        "description": "available means a nonempty saved object without an error property. It is not proof of a successful live collection or complete pagination. Other fields are emitted only when present in the permitted saved shape."
+      },
+      "Evidence": {
+        "type": "object",
+        "properties": {
+          "dom": {
+            "$ref": "#/components/schemas/EvidencePart"
+          },
+          "text": {
+            "$ref": "#/components/schemas/EvidencePart"
+          },
+          "bothAvailable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "dom",
+          "text",
+          "bothAvailable"
+        ],
+        "additionalProperties": false
+      },
+      "Source": {
+        "type": "object",
+        "properties": {
+          "runId": {
+            "$ref": "#/components/schemas/RunId"
+          },
+          "runIdSource": {
+            "$ref": "#/components/schemas/RunIdSource"
+          },
+          "snapshotId": {
+            "$ref": "#/components/schemas/SnapshotId"
+          },
+          "slot": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]{1,60}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "collectedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "checkedAt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timeSource": {
+            "type": "string",
+            "enum": [
+              "result.checkedAt",
+              "report.finishedAt",
+              "report.startedAt",
+              "report._ingestedAt",
+              "file.mtime"
+            ]
+          },
+          "collectionDate": {
+            "$ref": "#/components/schemas/Date"
+          },
+          "reportStartedAt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reportFinishedAt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timestampValid": {
+            "type": "boolean"
+          },
+          "ageMs": {
+            "type": "number",
+            "minimum": 0
+          },
+          "stale": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "runId",
+          "runIdSource",
+          "snapshotId",
+          "slot",
+          "collectedAt",
+          "checkedAt",
+          "timeSource",
+          "collectionDate",
+          "reportStartedAt",
+          "reportFinishedAt",
+          "timestampValid",
+          "ageMs",
+          "stale"
+        ],
+        "additionalProperties": false,
+        "description": "Per-result original run provenance. collectedAt uses the first valid time indicated by timeSource, with file mtime only as the last fallback; it is not always a confirmed sample time. Times more than five minutes in the future mark the result invalid and stale. Response generation does not initiate or refresh Amazon sampling."
+      },
+      "ResultCommon": {
+        "type": "object",
+        "properties": {
+          "checkId": {
+            "$ref": "#/components/schemas/CheckId"
+          },
+          "storeKey": {
+            "$ref": "#/components/schemas/StoreKey"
+          },
+          "market": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Z]{2,3}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "asin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Asin"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/StatusCode"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "recordedSeverity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Severity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ok": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recordedOk": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "presentationAdjusted": {
+            "type": "boolean"
+          },
+          "businessStatus": {
+            "$ref": "#/components/schemas/StatusCode"
+          },
+          "collectionStatus": {
+            "$ref": "#/components/schemas/StatusCode"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "high",
+                  "medium",
+                  "low",
+                  "conflict"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "verdictSource": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_+.-]{1,60}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source": {
+            "$ref": "#/components/schemas/Source"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/Evidence"
+          },
+          "actionState": {
+            "type": "string",
+            "enum": [
+              "NORMAL",
+              "BUSINESS",
+              "COLLECTION"
+            ]
+          }
+        },
+        "required": [
+          "checkId",
+          "storeKey",
+          "market",
+          "asin",
+          "status",
+          "severity",
+          "recordedSeverity",
+          "ok",
+          "recordedOk",
+          "presentationAdjusted",
+          "businessStatus",
+          "collectionStatus",
+          "confidence",
+          "verdictSource",
+          "source",
+          "evidence",
+          "actionState"
+        ],
+        "description": "status and recordedSeverity/recordedOk retain saved values. The projection sets ERROR/ok=false for recognized uncertainty, evidence conflicts, invalid future timestamps, unrecognized normal-status claims or an OK claim lacking both available routes or having explicit route failure. Recorded performance events remain actionable as CRITICAL. Staleness yields COLLECTION action state without replacing the saved status. This conservative presentation does not repair upstream business-judgment defects or certify every apparent agreement."
+      },
+      "BusinessResult": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ResultCommon"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "checkId": {
+                "$ref": "#/components/schemas/BusinessCheckId"
+              },
+              "metrics": {
+                "$ref": "#/components/schemas/BusinessMetrics"
+              },
+              "reasons": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "notes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "ahrScore": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "ahrScorePrev": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "ahrScoreMax": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "ahrDelta": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "durationMs": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "attempts": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "productTitle": {
+                "type": "string"
+              },
+              "statusPrev": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/StatusCode"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "statusChanged": {
+                "type": "boolean"
+              },
+              "baselineEligible": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "metrics",
+              "reasons",
+              "notes"
+            ]
+          }
+        ],
+        "unevaluatedProperties": false
+      },
+      "InboxResult": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ResultCommon"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "checkId": {
+                "const": "inbox",
+                "type": "string"
+              },
+              "asin": {
+                "type": "null"
+              },
+              "metrics": {
+                "$ref": "#/components/schemas/InboxMetrics"
+              }
+            },
+            "required": [
+              "metrics"
+            ]
+          }
+        ],
+        "unevaluatedProperties": false
+      },
+      "Result": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/BusinessResult"
+          },
+          {
+            "$ref": "#/components/schemas/InboxResult"
+          }
+        ]
+      },
+      "CheckSummary": {
+        "type": "object",
+        "properties": {
+          "checkId": {
+            "$ref": "#/components/schemas/CheckId"
+          },
+          "checkNo": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StatusCode"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Severity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "resultCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Result"
+            }
+          }
+        },
+        "required": [
+          "checkId",
+          "checkNo",
+          "title",
+          "status",
+          "severity",
+          "stale",
+          "resultCount",
+          "results"
+        ],
+        "additionalProperties": false,
+        "description": "One entry for each of the nine checks. No saved result yields status [NEVER_RUN], severity null, resultCount 0 and results []. Different ASINs may retain different original runs."
+      },
+      "Results": {
+        "type": "object",
+        "properties": {
+          "store": {
+            "$ref": "#/components/schemas/Store"
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CheckSummary"
+            },
+            "minItems": 9,
+            "maxItems": 9
+          }
+        },
+        "required": [
+          "store",
+          "checks"
+        ],
+        "additionalProperties": false
+      },
+      "Run": {
+        "type": "object",
+        "properties": {
+          "runId": {
+            "$ref": "#/components/schemas/RunId"
+          },
+          "runIdSource": {
+            "$ref": "#/components/schemas/RunIdSource"
+          },
+          "snapshotId": {
+            "$ref": "#/components/schemas/SnapshotId"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "collectionDates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Date"
+            },
+            "uniqueItems": true
+          },
+          "resultCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "matchingResultCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "savedRecordCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "statuses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StatusCode"
+            },
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "runId",
+          "runIdSource",
+          "snapshotId",
+          "startedAt",
+          "finishedAt",
+          "collectionDates",
+          "resultCount",
+          "matchingResultCount",
+          "savedRecordCount",
+          "statuses"
+        ],
+        "additionalProperties": false,
+        "description": "One immutable saved run. Date filters select matching results, but resultCount/savedRecordCount describe the entire authorized store fragment of that run. data returns that whole fragment, not just the date-filtered subset. Runs are ordered newest report clock first."
+      },
+      "ReviewPage": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pages": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "capturedAt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "page",
+          "pages",
+          "capturedAt"
+        ],
+        "additionalProperties": false,
+        "description": "Explicit saved review ID to page association only. No historical association is inferred. Empty reviewPages does not prove no screenshot existed; screenshot files/paths are never returned."
+      },
+      "InboxRecord": {
+        "type": "object",
+        "properties": {
+          "recordType": {
+            "const": "check-result",
+            "type": "string"
+          },
+          "resultIndex": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "result": {
+            "$ref": "#/components/schemas/InboxResult"
+          }
+        },
+        "required": [
+          "recordType",
+          "resultIndex",
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      "CheckRecord": {
+        "type": "object",
+        "properties": {
+          "recordType": {
+            "const": "check-result",
+            "type": "string"
+          },
+          "resultIndex": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "result": {
+            "$ref": "#/components/schemas/BusinessResult"
+          },
+          "itemIndex": {
+            "type": "null"
+          },
+          "item": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "recordType",
+          "resultIndex",
+          "result",
+          "itemIndex",
+          "item"
+        ],
+        "additionalProperties": false
+      },
+      "BusinessItemRecord": {
+        "type": "object",
+        "properties": {
+          "recordType": {
+            "const": "business-item",
+            "type": "string"
+          },
+          "resultIndex": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "result": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BusinessResult"
+              },
+              {
+                "properties": {
+                  "checkId": {
+                    "enum": [
+                      "store-health",
+                      "performance",
+                      "feedback",
+                      "reviews",
+                      "asin-health",
+                      "outlet",
+                      "ads-status"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "itemIndex": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "item": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BusinessItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reviewPages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewPage"
+            }
+          }
+        },
+        "required": [
+          "recordType",
+          "resultIndex",
+          "result",
+          "itemIndex",
+          "item"
+        ],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "result": {
+                  "properties": {
+                    "checkId": {
+                      "const": "reviews",
+                      "type": "string"
+                    }
+                  }
+                },
+                "item": {
+                  "type": "object"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "reviewPages"
+              ]
+            },
+            "else": {
+              "not": {
+                "required": [
+                  "reviewPages"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "VocAsinRecord": {
+        "type": "object",
+        "properties": {
+          "recordType": {
+            "const": "voc-asin",
+            "type": "string"
+          },
+          "resultIndex": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "result": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BusinessResult"
+              },
+              {
+                "properties": {
+                  "checkId": {
+                    "const": "voc",
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "itemIndex": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "item": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BusinessItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "recordType",
+          "resultIndex",
+          "result",
+          "itemIndex",
+          "item"
+        ],
+        "additionalProperties": false
+      },
+      "VocRecord": {
+        "type": "object",
+        "properties": {
+          "recordType": {
+            "const": "voc-record",
+            "type": "string"
+          },
+          "resultIndex": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "result": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BusinessResult"
+              },
+              {
+                "properties": {
+                  "checkId": {
+                    "const": "voc",
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "itemIndex": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "item": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BusinessItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recordIndex": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "parentAsin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Asin"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "recordType",
+          "resultIndex",
+          "result",
+          "itemIndex",
+          "item",
+          "recordIndex",
+          "parentAsin"
+        ],
+        "additionalProperties": false
+      },
+      "DataRecord": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/InboxRecord"
+          },
+          {
+            "$ref": "#/components/schemas/CheckRecord"
+          },
+          {
+            "$ref": "#/components/schemas/BusinessItemRecord"
+          },
+          {
+            "$ref": "#/components/schemas/VocAsinRecord"
+          },
+          {
+            "$ref": "#/components/schemas/VocRecord"
+          }
+        ],
+        "description": "One stored result without business items, or one saved allowlisted item. VOC parent ASIN rows and all child records are expanded in saved order. Indices are zero-based within the selected store fragment. Invalid saved item shapes may project to an empty object or null; no item-count truncation is applied. Inbox always emits only its check-result row."
+      },
+      "Pagination": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "pages": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "hasMore": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "page",
+          "pageSize",
+          "total",
+          "pages",
+          "hasMore"
+        ],
+        "additionalProperties": false,
+        "description": "total counts returned resource rows before page slicing, not Amazon-wide records. pages is ceil(total/pageSize); zero total has zero pages. A page beyond the end returns an empty data array."
+      },
+      "MetadataCommon": {
+        "type": "object",
+        "properties": {
+          "generatedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "timezone": {
+            "const": "Asia/Shanghai",
+            "type": "string"
+          },
+          "readOnly": {
+            "const": true,
+            "type": "boolean"
+          },
+          "dataSource": {
+            "const": "saved-reports",
+            "type": "string"
+          },
+          "collectionTriggered": {
+            "const": false,
+            "type": "boolean"
+          },
+          "staleAfterMs": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "completeness": {
+            "const": "All valid saved records allowed by the public-field policy; not a claim of complete Amazon collection.",
+            "type": "string"
+          },
+          "excluded": {
+            "type": "array",
+            "const": [
+              "credentials",
+              "buyer-identity-and-contact",
+              "raw-page-content",
+              "internal-paths",
+              "screenshots",
+              "inbox-message-records"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "ignoredReports": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "generatedAt",
+          "timezone",
+          "readOnly",
+          "dataSource",
+          "collectionTriggered",
+          "staleAfterMs",
+          "completeness",
+          "excluded",
+          "ignoredReports"
+        ],
+        "description": "Read-only saved-data scope and response time. ignoredReports counts skipped malformed, structurally invalid or future-dated report files in scanned check directories, not missing Amazon records. excluded names the projection policy, not a guarantee of recognizing arbitrary personal prose."
+      },
+      "ReadMetadata": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MetadataCommon"
+          }
+        ],
+        "unevaluatedProperties": false
+      },
+      "RunsMetadata": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MetadataCommon"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "dateFilterMeaning": {
+                "const": "Per-result collection date in Asia/Shanghai; not review publication date.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "dateFilterMeaning"
+            ]
+          }
+        ],
+        "unevaluatedProperties": false
+      },
+      "DataMetadata": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/MetadataCommon"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "runId": {
+                "$ref": "#/components/schemas/RunId"
+              },
+              "runIdSource": {
+                "$ref": "#/components/schemas/RunIdSource"
+              },
+              "snapshotId": {
+                "$ref": "#/components/schemas/SnapshotId"
+              },
+              "paginationOrder": {
+                "const": "Saved result/item order; VOC ASIN followed by its saved records.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "runId",
+              "runIdSource",
+              "snapshotId",
+              "paginationOrder"
+            ]
+          }
+        ],
+        "unevaluatedProperties": false
+      },
+      "EnvelopeCommon": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "const": "1.0",
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "generatedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "requestId",
+          "generatedAt"
+        ],
+        "description": "Successful JSON API responses only. generatedAt is response generation time, never a new Amazon sample. HTML, 303 redirects, the raw OpenAPI resource and problem responses do not use this envelope."
+      },
+      "StoresResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EnvelopeCommon"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Store"
+                }
+              },
+              "pagination": {
+                "type": "null"
+              },
+              "metadata": {
+                "$ref": "#/components/schemas/ReadMetadata"
+              }
+            },
+            "required": [
+              "data",
+              "pagination",
+              "metadata"
+            ]
+          }
+        ],
+        "unevaluatedProperties": false,
+        "examples": [
+          {
+            "apiVersion": "1.0",
+            "requestId": "f5c26d8b-fd9d-4a0f-8064-cffadb0c65e0",
+            "generatedAt": "2026-09-12T04:00:00.000Z",
+            "data": [
+              {
+                "storeKey": "A",
+                "storeName": "Fixture A",
+                "market": "US"
+              }
+            ],
+            "pagination": null,
+            "metadata": {
+              "generatedAt": "2026-09-12T04:00:00.000Z",
+              "timezone": "Asia/Shanghai",
+              "readOnly": true,
+              "dataSource": "saved-reports",
+              "collectionTriggered": false,
+              "staleAfterMs": 129600000,
+              "completeness": "All valid saved records allowed by the public-field policy; not a claim of complete Amazon collection.",
+              "excluded": [
+                "credentials",
+                "buyer-identity-and-contact",
+                "raw-page-content",
+                "internal-paths",
+                "screenshots",
+                "inbox-message-records"
+              ],
+              "ignoredReports": 0
+            }
+          }
+        ]
+      },
+      "ResultsResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EnvelopeCommon"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/Results"
+              },
+              "pagination": {
+                "type": "null"
+              },
+              "metadata": {
+                "$ref": "#/components/schemas/ReadMetadata"
+              }
+            },
+            "required": [
+              "data",
+              "pagination",
+              "metadata"
+            ]
+          }
+        ],
+        "unevaluatedProperties": false
+      },
+      "RunsResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EnvelopeCommon"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              },
+              "pagination": {
+                "$ref": "#/components/schemas/Pagination"
+              },
+              "metadata": {
+                "$ref": "#/components/schemas/RunsMetadata"
+              }
+            },
+            "required": [
+              "data",
+              "pagination",
+              "metadata"
+            ]
+          }
+        ],
+        "unevaluatedProperties": false,
+        "examples": [
+          {
+            "apiVersion": "1.0",
+            "requestId": "1365772e-cca5-4529-9547-c0b7649c24d2",
+            "generatedAt": "2026-09-12T04:00:00.000Z",
+            "data": [
+              {
+                "runId": "example-run",
+                "runIdSource": "report",
+                "snapshotId": "fa6fe153080105a19362661824f5641abc2a73879eb19a4e8032489aabc271c4",
+                "startedAt": "2026-09-12T00:00:00.000Z",
+                "finishedAt": "2026-09-12T01:00:00.000Z",
+                "collectionDates": [
+                  "2026-09-12"
+                ],
+                "resultCount": 1,
+                "matchingResultCount": 1,
+                "savedRecordCount": 1,
+                "statuses": [
+                  "LOW_REVIEW"
+                ]
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 100,
+              "total": 1,
+              "pages": 1,
+              "hasMore": false
+            },
+            "metadata": {
+              "generatedAt": "2026-09-12T04:00:00.000Z",
+              "timezone": "Asia/Shanghai",
+              "readOnly": true,
+              "dataSource": "saved-reports",
+              "collectionTriggered": false,
+              "staleAfterMs": 129600000,
+              "completeness": "All valid saved records allowed by the public-field policy; not a claim of complete Amazon collection.",
+              "excluded": [
+                "credentials",
+                "buyer-identity-and-contact",
+                "raw-page-content",
+                "internal-paths",
+                "screenshots",
+                "inbox-message-records"
+              ],
+              "ignoredReports": 0,
+              "dateFilterMeaning": "Per-result collection date in Asia/Shanghai; not review publication date."
+            }
+          }
+        ]
+      },
+      "DataResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EnvelopeCommon"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DataRecord"
+                }
+              },
+              "pagination": {
+                "$ref": "#/components/schemas/Pagination"
+              },
+              "metadata": {
+                "$ref": "#/components/schemas/DataMetadata"
+              }
+            },
+            "required": [
+              "data",
+              "pagination",
+              "metadata"
+            ]
+          }
+        ],
+        "unevaluatedProperties": false,
+        "examples": [
+          {
+            "apiVersion": "1.0",
+            "requestId": "8f02ee78-bfbb-41a9-8b93-1146c488dfb1",
+            "generatedAt": "2026-09-12T04:00:00.000Z",
+            "data": [
+              {
+                "recordType": "business-item",
+                "resultIndex": 0,
+                "result": {
+                  "checkId": "reviews",
+                  "storeKey": "A",
+                  "market": "US",
+                  "asin": null,
+                  "status": "LOW_REVIEW",
+                  "severity": "CRITICAL",
+                  "recordedSeverity": "CRITICAL",
+                  "ok": false,
+                  "recordedOk": false,
+                  "presentationAdjusted": false,
+                  "businessStatus": "ANOMALY",
+                  "collectionStatus": "COMPLETE",
+                  "confidence": "high",
+                  "verdictSource": "dom+text",
+                  "metrics": {
+                    "lowCount": 1,
+                    "businessStatus": "ANOMALY",
+                    "collectionStatus": "COMPLETE"
+                  },
+                  "source": {
+                    "runId": "example-run",
+                    "runIdSource": "report",
+                    "snapshotId": "fa6fe153080105a19362661824f5641abc2a73879eb19a4e8032489aabc271c4",
+                    "slot": "am",
+                    "collectedAt": "2026-09-12T01:00:00.000Z",
+                    "checkedAt": "2026-09-12T01:00:00.000Z",
+                    "timeSource": "result.checkedAt",
+                    "collectionDate": "2026-09-12",
+                    "reportStartedAt": "2026-09-12T00:00:00.000Z",
+                    "reportFinishedAt": "2026-09-12T01:00:00.000Z",
+                    "timestampValid": true,
+                    "ageMs": 10800000,
+                    "stale": false
+                  },
+                  "evidence": {
+                    "dom": {
+                      "available": true,
+                      "landed": true
+                    },
+                    "text": {
+                      "available": true,
+                      "landed": true
+                    },
+                    "bothAvailable": true
+                  },
+                  "actionState": "BUSINESS",
+                  "reasons": [
+                    "Saved low-star review"
+                  ],
+                  "notes": []
+                },
+                "itemIndex": 0,
+                "item": {
+                  "title": "Synthetic review title",
+                  "date": "2026-08-01",
+                  "stars": 1,
+                  "reviewId": "EXAMPLE-REVIEW-1"
+                },
+                "reviewPages": [
+                  {
+                    "page": 1,
+                    "pages": 1,
+                    "capturedAt": "2026-09-12T01:00:00.000Z"
+                  }
+                ]
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 1,
+              "total": 1,
+              "pages": 1,
+              "hasMore": false
+            },
+            "metadata": {
+              "generatedAt": "2026-09-12T04:00:00.000Z",
+              "timezone": "Asia/Shanghai",
+              "readOnly": true,
+              "dataSource": "saved-reports",
+              "collectionTriggered": false,
+              "staleAfterMs": 129600000,
+              "completeness": "All valid saved records allowed by the public-field policy; not a claim of complete Amazon collection.",
+              "excluded": [
+                "credentials",
+                "buyer-identity-and-contact",
+                "raw-page-content",
+                "internal-paths",
+                "screenshots",
+                "inbox-message-records"
+              ],
+              "ignoredReports": 0,
+              "runId": "example-run",
+              "runIdSource": "report",
+              "snapshotId": "fa6fe153080105a19362661824f5641abc2a73879eb19a4e8032489aabc271c4",
+              "paginationOrder": "Saved result/item order; VOC ASIN followed by its saved records."
+            }
+          }
+        ]
+      },
+      "Capabilities": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "const": "1.0",
+            "type": "string"
+          },
+          "readOnly": {
+            "const": true,
+            "type": "boolean"
+          },
+          "storeKeys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StoreKey"
+            }
+          },
+          "resourceClasses": {
+            "type": "array",
+            "const": [
+              "results",
+              "data"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/View"
+            }
+          },
+          "intelligenceIncluded": {
+            "const": false,
+            "type": "boolean"
+          },
+          "ssoAvailable": {
+            "type": "boolean"
+          },
+          "ticketTtlSeconds": {
+            "type": "integer",
+            "const": 60
+          },
+          "sessionTtlSeconds": {
+            "type": "integer",
+            "const": 1800
+          },
+          "staleAfterHours": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "checks": {
+            "type": "array",
+            "description": "Current monitoring catalog; titles come from the server registry. No intelligence resources.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "$ref": "#/components/schemas/CheckId"
+                },
+                "no": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9
+                },
+                "title": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "string",
+                  "enum": [
+                    "store",
+                    "asin"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "no",
+                "title",
+                "scope"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "version",
+          "readOnly",
+          "storeKeys",
+          "resourceClasses",
+          "intelligenceIncluded",
+          "ssoAvailable",
+          "ticketTtlSeconds",
+          "sessionTtlSeconds",
+          "staleAfterHours",
+          "checks"
+        ],
+        "additionalProperties": false
+      },
+      "CapabilitiesResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EnvelopeCommon"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/Capabilities"
+              }
+            },
+            "required": [
+              "data"
+            ]
+          }
+        ],
+        "unevaluatedProperties": false,
+        "examples": [
+          {
+            "apiVersion": "1.0",
+            "requestId": "0d425fd9-7566-4bdc-a683-ee0328215a99",
+            "generatedAt": "2026-09-12T04:00:00.000Z",
+            "data": {
+              "version": "1.0",
+              "readOnly": true,
+              "storeKeys": [
+                "A"
+              ],
+              "resourceClasses": [
+                "results",
+                "data"
+              ],
+              "intelligenceIncluded": false,
+              "ssoAvailable": true,
+              "ticketTtlSeconds": 60,
+              "sessionTtlSeconds": 1800,
+              "staleAfterHours": 36,
+              "checks": [
+                {
+                  "id": "store-health",
+                  "no": 1,
+                  "title": "店铺健康状态",
+                  "scope": "store"
+                },
+                {
+                  "id": "performance",
+                  "no": 2,
+                  "title": "绩效未处理检查",
+                  "scope": "store"
+                },
+                {
+                  "id": "feedback",
+                  "no": 3,
+                  "title": "Recent Feedback 检查",
+                  "scope": "store"
+                },
+                {
+                  "id": "reviews",
+                  "no": 4,
+                  "title": "Customer Reviews 检查",
+                  "scope": "store"
+                },
+                {
+                  "id": "asin-health",
+                  "no": 5,
+                  "title": "ASIN 常规检查",
+                  "scope": "asin"
+                },
+                {
+                  "id": "outlet",
+                  "no": 6,
+                  "title": "奥特莱斯监控",
+                  "scope": "store"
+                },
+                {
+                  "id": "voc",
+                  "no": 7,
+                  "title": "客户登记 (VOC)",
+                  "scope": "store"
+                },
+                {
+                  "id": "ads-status",
+                  "no": 8,
+                  "title": "广告开关检查",
+                  "scope": "store"
+                },
+                {
+                  "id": "inbox",
+                  "no": 9,
+                  "title": "Inbox 买家消息检查",
+                  "scope": "store"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "Session": {
+        "type": "object",
+        "properties": {
+          "storeKey": {
+            "$ref": "#/components/schemas/StoreKey"
+          },
+          "checkId": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CheckId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "view": {
+            "$ref": "#/components/schemas/View"
+          },
+          "expiresAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "readOnly": {
+            "const": true,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "storeKey",
+          "checkId",
+          "view",
+          "expiresAt",
+          "readOnly"
+        ],
+        "additionalProperties": false
+      },
+      "SessionResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EnvelopeCommon"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/Session"
+              }
+            },
+            "required": [
+              "data"
+            ]
+          }
+        ],
+        "unevaluatedProperties": false
+      },
+      "TicketRequest": {
+        "type": "object",
+        "properties": {
+          "challengeId": {
+            "$ref": "#/components/schemas/OpaqueCredential"
+          },
+          "subject": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]+$",
+            "description": "Stable CRM subject, without leading/trailing whitespace. The CRM backend must independently authorize this signed-in subject before requesting a ticket. Not returned by session endpoints."
+          },
+          "storeKey": {
+            "$ref": "#/components/schemas/StoreKey"
+          },
+          "checkId": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CheckId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "view": {
+            "$ref": "#/components/schemas/View"
+          }
+        },
+        "required": [
+          "challengeId",
+          "subject",
+          "storeKey",
+          "view"
+        ],
+        "additionalProperties": false
+      },
+      "Ticket": {
+        "type": "object",
+        "properties": {
+          "loginUrl": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https://[^/?#]+/crm/sso#ticket=[A-Za-z0-9_-]{43}$",
+            "description": "Navigate the same browser used for sso/start to this URL. Ticket is in the fragment only; never copy it into a query. Treat the entire URL as a credential."
+          },
+          "expiresAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "singleUse": {
+            "const": true,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "loginUrl",
+          "expiresAt",
+          "singleUse"
+        ],
+        "additionalProperties": false
+      },
+      "TicketResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EnvelopeCommon"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/Ticket"
+              }
+            },
+            "required": [
+              "data"
+            ]
+          }
+        ],
+        "unevaluatedProperties": false
+      },
+      "ExchangeRequest": {
+        "type": "object",
+        "properties": {
+          "ticket": {
+            "$ref": "#/components/schemas/OpaqueCredential"
+          }
+        },
+        "required": [
+          "ticket"
+        ],
+        "additionalProperties": false
+      },
+      "ExchangeResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EnvelopeCommon"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "location": {
+                    "const": "/crm/",
+                    "type": "string"
+                  },
+                  "expiresAt": {
+                    "$ref": "#/components/schemas/Timestamp"
+                  }
+                },
+                "required": [
+                  "location",
+                  "expiresAt"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "data"
+            ]
+          }
+        ],
+        "unevaluatedProperties": false
+      },
+      "LogoutRequest": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "LogoutResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EnvelopeCommon"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "loggedOut": {
+                    "const": true,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "loggedOut"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "data"
+            ]
+          }
+        ],
+        "unevaluatedProperties": false
+      },
+      "Problem": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "const": "about:blank",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer",
+            "enum": [
+              400,
+              401,
+              403,
+              404,
+              405,
+              409,
+              413,
+              415,
+              421,
+              429,
+              500,
+              503
+            ]
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]+$",
+            "description": "Known validation codes are listed in x-known-error-codes. Unexpected internal errors may retain a safe uppercase system code (for example ENOENT); clients must handle unknown codes. CRM_REQUEST_FAILED is the HTTP fallback if a read-layer failure lacks a code.",
+            "x-known-error-codes": {
+              "400": [
+                "CRM_INVALID_INPUT",
+                "CRM_INVALID_STORE",
+                "CRM_INVALID_VIEW",
+                "CRM_INVALID_CHECK",
+                "CRM_INVALID_SUBJECT",
+                "CRM_DUPLICATE_COOKIE",
+                "CRM_INVALID_COOKIE",
+                "CRM_BODY_INVALID",
+                "CRM_JSON_INVALID",
+                "CRM_UNKNOWN_FIELD",
+                "CRM_HTTPS_REQUIRED",
+                "CRM_QUERY_CREDENTIAL_REJECTED",
+                "CRM_DUPLICATE_PARAMETER",
+                "CRM_INVALID_QUERY",
+                "INVALID_QUERY",
+                "INVALID_URL"
+              ],
+              "401": [
+                "CRM_AUTH_REQUIRED",
+                "CRM_SESSION_INVALID",
+                "CRM_CHALLENGE_INVALID",
+                "CRM_TICKET_INVALID"
+              ],
+              "403": [
+                "CRM_STORE_FORBIDDEN",
+                "CRM_CLIENT_REQUIRED",
+                "CRM_DESTINATION_MISMATCH",
+                "CRM_SAME_ORIGIN_REQUIRED"
+              ],
+              "404": [
+                "CRM_NOT_FOUND",
+                "NOT_FOUND"
+              ],
+              "405": [
+                "CRM_METHOD_NOT_ALLOWED"
+              ],
+              "409": [
+                "CRM_CHALLENGE_USED",
+                "REPORT_CONFLICT",
+                "SNAPSHOT_CHANGED"
+              ],
+              "413": [
+                "CRM_BODY_TOO_LARGE"
+              ],
+              "415": [
+                "CRM_JSON_REQUIRED",
+                "CRM_ENCODING_UNSUPPORTED"
+              ],
+              "421": [
+                "CRM_ORIGIN_MISMATCH"
+              ],
+              "429": [
+                "CRM_RATE_LIMITED"
+              ],
+              "500": [
+                "CRM_INTERNAL_ERROR"
+              ],
+              "503": [
+                "CRM_CONFIG_INVALID",
+                "CRM_CLOCK_INVALID",
+                "CRM_DISABLED",
+                "CRM_SSO_UNAVAILABLE",
+                "CRM_CAPACITY",
+                "CRM_RATE_CAPACITY"
+              ]
+            }
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "detail": {
+            "type": "string",
+            "description": "Controlled validation text; all 500 responses use Internal server error."
+          },
+          "instance": {
+            "type": "string",
+            "description": "Request pathname only; query credentials are never reflected here."
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code",
+          "requestId",
+          "detail",
+          "instance"
+        ],
+        "additionalProperties": false,
+        "examples": [
+          {
+            "type": "about:blank",
+            "title": "Not Found",
+            "status": 404,
+            "code": "NOT_FOUND",
+            "requestId": "d1880f03-0b8e-4c04-9d5e-7e283c03d988",
+            "detail": "Resource not found.",
+            "instance": "/api/crm/v1/stores/B/results"
+          }
+        ]
+      },
+      "OpenApiDocument": {
+        "type": "object",
+        "required": [
+          "openapi",
+          "info",
+          "paths",
+          "components"
+        ],
+        "properties": {
+          "openapi": {
+            "const": "3.1.1",
+            "type": "string"
+          },
+          "info": {
+            "type": "object"
+          },
+          "paths": {
+            "type": "object"
+          },
+          "components": {
+            "type": "object"
+          }
+        },
+        "additionalProperties": true,
+        "description": "The raw OpenAPI document; not wrapped in the success envelope."
+      }
+    },
+    "parameters": {
+      "StoreKey": {
+        "name": "storeKey",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/StoreKey"
+        },
+        "description": "Exact enabled store key available to the current CRM principal. Unknown or out-of-scope data resources return 404."
+      },
+      "CheckId": {
+        "name": "checkId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/CheckId"
+        },
+        "description": "One of the nine monitoring checks; competitive intelligence is not included."
+      },
+      "Page": {
+        "name": "page",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000,
+          "default": 1
+        },
+        "description": "Decimal digits only, matching ^[1-9]\\d*$. No leading zero, sign, exponent, whitespace or repeated parameter."
+      },
+      "PageSize": {
+        "name": "pageSize",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200,
+          "default": 100
+        },
+        "description": "Decimal digits only, matching ^[1-9]\\d*$. Values above 200 are rejected, not clamped."
+      },
+      "From": {
+        "name": "from",
+        "in": "query",
+        "schema": {
+          "$ref": "#/components/schemas/Date"
+        },
+        "description": "Inclusive start of each result collection date in Asia/Shanghai. Must be a real calendar date; from must not exceed to. This does not filter review publication dates."
+      },
+      "To": {
+        "name": "to",
+        "in": "query",
+        "schema": {
+          "$ref": "#/components/schemas/Date"
+        },
+        "description": "Inclusive end of each result collection date in Asia/Shanghai; must be a real calendar date."
+      },
+      "RunId": {
+        "name": "runId",
+        "in": "query",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300,
+          "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+        },
+        "description": "Use the exact runId from runs; it must resolve to a saved report. The request parser accepts non-control text, but no invented latest aggregate is available."
+      },
+      "SnapshotId": {
+        "name": "snapshotId",
+        "in": "query",
+        "schema": {
+          "$ref": "#/components/schemas/SnapshotId"
+        },
+        "description": "Recommended on every page after selection. Mismatch returns 409 SNAPSHOT_CHANGED; without it a replaced report can be read under the same runId. Conflicting simultaneous copies always fail with REPORT_CONFLICT, even with snapshotId."
+      },
+      "Origin": {
+        "name": "Origin",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uri"
+        },
+        "description": "Must exactly equal the configured HTTPS public origin."
+      },
+      "SecFetchSite": {
+        "name": "Sec-Fetch-Site",
+        "in": "header",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "same-origin",
+            ""
+          ]
+        },
+        "description": "May be absent or empty; when nonempty, must be same-origin."
+      }
+    },
+    "headers": {
+      "X-Request-Id": {
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "description": "Matches the JSON requestId when a JSON body is returned."
+      },
+      "X-RateLimit-Limit": {
+        "schema": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "description": "Last applicable per-IP fixed-window limit: API 120/minute, browser 60/minute, start 10/minute, ticket issuance/exchange 20/minute."
+      },
+      "X-RateLimit-Remaining": {
+        "schema": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "description": "Remaining requests in the last applicable limiter. Does not bypass the other applicable limiter."
+      },
+      "Retry-After": {
+        "schema": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "description": "Seconds until the exceeded fixed window resets; returned for 429."
+      },
+      "WWW-Authenticate": {
+        "schema": {
+          "type": "string"
+        },
+        "description": "For API-path 401: Bearer realm=\"amzguard-crm\", with error=\"invalid_token\" when an Authorization value was supplied."
+      },
+      "Allow": {
+        "schema": {
+          "type": "string",
+          "enum": [
+            "GET",
+            "POST"
+          ]
+        },
+        "description": "The supported method; returned for 405."
+      },
+      "Set-Cookie": {
+        "schema": {
+          "type": "string"
+        },
+        "description": "One or more Set-Cookie headers. CRM cookies are Path=/; HttpOnly; Secure; SameSite=Lax, without Domain. Binding cookie Max-Age=120; session cookie Max-Age=1800; clearing uses Max-Age=0."
+      },
+      "Location": {
+        "schema": {
+          "type": "string",
+          "format": "uri"
+        },
+        "description": "Fixed configured HTTPS CRM callback with challengeId, storeKey, view and optional checkId appended."
+      },
+      "Cache-Control": {
+        "schema": {
+          "const": "no-store",
+          "type": "string"
+        }
+      },
+      "Referrer-Policy": {
+        "schema": {
+          "const": "no-referrer",
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "Problem400": {
+        "description": "Bad Request: CRM_DUPLICATE_COOKIE, CRM_HTTPS_REQUIRED, CRM_INVALID_COOKIE, CRM_INVALID_QUERY, CRM_QUERY_CREDENTIAL_REJECTED",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 400
+                    },
+                    "title": {
+                      "const": "Bad Request"
+                    },
+                    "code": {
+                      "enum": [
+                        "CRM_DUPLICATE_COOKIE",
+                        "CRM_HTTPS_REQUIRED",
+                        "CRM_INVALID_COOKIE",
+                        "CRM_INVALID_QUERY",
+                        "CRM_QUERY_CREDENTIAL_REJECTED"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem401": {
+        "description": "Unauthorized: CRM_AUTH_REQUIRED, CRM_SESSION_INVALID",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          },
+          "WWW-Authenticate": {
+            "$ref": "#/components/headers/WWW-Authenticate"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 401
+                    },
+                    "title": {
+                      "const": "Unauthorized"
+                    },
+                    "code": {
+                      "enum": [
+                        "CRM_AUTH_REQUIRED",
+                        "CRM_SESSION_INVALID"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem403": {
+        "description": "Forbidden: CRM_STORE_FORBIDDEN",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 403
+                    },
+                    "title": {
+                      "const": "Forbidden"
+                    },
+                    "code": {
+                      "enum": [
+                        "CRM_STORE_FORBIDDEN"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem405": {
+        "description": "Method Not Allowed: CRM_METHOD_NOT_ALLOWED",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          },
+          "Allow": {
+            "$ref": "#/components/headers/Allow"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 405
+                    },
+                    "title": {
+                      "const": "Method Not Allowed"
+                    },
+                    "code": {
+                      "enum": [
+                        "CRM_METHOD_NOT_ALLOWED"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem421": {
+        "description": "Misdirected Request: CRM_ORIGIN_MISMATCH",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 421
+                    },
+                    "title": {
+                      "const": "Misdirected Request"
+                    },
+                    "code": {
+                      "enum": [
+                        "CRM_ORIGIN_MISMATCH"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem429": {
+        "description": "Too Many Requests: CRM_RATE_LIMITED",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          },
+          "Retry-After": {
+            "$ref": "#/components/headers/Retry-After"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 429
+                    },
+                    "title": {
+                      "const": "Too Many Requests"
+                    },
+                    "code": {
+                      "enum": [
+                        "CRM_RATE_LIMITED"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem500": {
+        "description": "Internal Server Error: CRM_INTERNAL_ERROR",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 500
+                    },
+                    "title": {
+                      "const": "Internal Server Error"
+                    },
+                    "detail": {
+                      "const": "Internal server error",
+                      "type": "string"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem503": {
+        "description": "Service Unavailable: CRM_CLOCK_INVALID, CRM_CONFIG_INVALID, CRM_DISABLED, CRM_RATE_CAPACITY",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 503
+                    },
+                    "title": {
+                      "const": "Service Unavailable"
+                    },
+                    "code": {
+                      "enum": [
+                        "CRM_CLOCK_INVALID",
+                        "CRM_CONFIG_INVALID",
+                        "CRM_DISABLED",
+                        "CRM_RATE_CAPACITY"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem400_2": {
+        "description": "Bad Request: CRM_DUPLICATE_COOKIE, CRM_HTTPS_REQUIRED, CRM_INVALID_COOKIE, CRM_QUERY_CREDENTIAL_REJECTED, INVALID_QUERY",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 400
+                    },
+                    "title": {
+                      "const": "Bad Request"
+                    },
+                    "code": {
+                      "enum": [
+                        "CRM_DUPLICATE_COOKIE",
+                        "CRM_HTTPS_REQUIRED",
+                        "CRM_INVALID_COOKIE",
+                        "CRM_QUERY_CREDENTIAL_REJECTED",
+                        "INVALID_QUERY"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem400_3": {
+        "description": "Bad Request: CRM_DUPLICATE_COOKIE, CRM_HTTPS_REQUIRED, CRM_INVALID_COOKIE, CRM_QUERY_CREDENTIAL_REJECTED, INVALID_QUERY, INVALID_URL",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 400
+                    },
+                    "title": {
+                      "const": "Bad Request"
+                    },
+                    "code": {
+                      "enum": [
+                        "CRM_DUPLICATE_COOKIE",
+                        "CRM_HTTPS_REQUIRED",
+                        "CRM_INVALID_COOKIE",
+                        "CRM_QUERY_CREDENTIAL_REJECTED",
+                        "INVALID_QUERY",
+                        "INVALID_URL"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem404": {
+        "description": "Not Found: NOT_FOUND",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 404
+                    },
+                    "title": {
+                      "const": "Not Found"
+                    },
+                    "code": {
+                      "enum": [
+                        "NOT_FOUND"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem409": {
+        "description": "Conflict: REPORT_CONFLICT",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 409
+                    },
+                    "title": {
+                      "const": "Conflict"
+                    },
+                    "code": {
+                      "enum": [
+                        "REPORT_CONFLICT"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem409_2": {
+        "description": "Conflict: REPORT_CONFLICT, SNAPSHOT_CHANGED",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 409
+                    },
+                    "title": {
+                      "const": "Conflict"
+                    },
+                    "code": {
+                      "enum": [
+                        "REPORT_CONFLICT",
+                        "SNAPSHOT_CHANGED"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem400_4": {
+        "description": "Bad Request: CRM_DUPLICATE_PARAMETER, CRM_HTTPS_REQUIRED, CRM_INVALID_CHECK, CRM_INVALID_INPUT, CRM_INVALID_STORE, CRM_INVALID_VIEW, CRM_QUERY_CREDENTIAL_REJECTED",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 400
+                    },
+                    "title": {
+                      "const": "Bad Request"
+                    },
+                    "code": {
+                      "enum": [
+                        "CRM_DUPLICATE_PARAMETER",
+                        "CRM_HTTPS_REQUIRED",
+                        "CRM_INVALID_CHECK",
+                        "CRM_INVALID_INPUT",
+                        "CRM_INVALID_STORE",
+                        "CRM_INVALID_VIEW",
+                        "CRM_QUERY_CREDENTIAL_REJECTED"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem503_2": {
+        "description": "Service Unavailable: CRM_CAPACITY, CRM_CLOCK_INVALID, CRM_CONFIG_INVALID, CRM_DISABLED, CRM_RATE_CAPACITY, CRM_SSO_UNAVAILABLE",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 503
+                    },
+                    "title": {
+                      "const": "Service Unavailable"
+                    },
+                    "code": {
+                      "enum": [
+                        "CRM_CAPACITY",
+                        "CRM_CLOCK_INVALID",
+                        "CRM_CONFIG_INVALID",
+                        "CRM_DISABLED",
+                        "CRM_RATE_CAPACITY",
+                        "CRM_SSO_UNAVAILABLE"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem400_5": {
+        "description": "Bad Request: CRM_BODY_INVALID, CRM_HTTPS_REQUIRED, CRM_INVALID_CHECK, CRM_INVALID_INPUT, CRM_INVALID_QUERY, CRM_INVALID_STORE, CRM_INVALID_SUBJECT, CRM_INVALID_VIEW, CRM_JSON_INVALID, CRM_QUERY_CREDENTIAL_REJECTED",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 400
+                    },
+                    "title": {
+                      "const": "Bad Request"
+                    },
+                    "code": {
+                      "enum": [
+                        "CRM_BODY_INVALID",
+                        "CRM_HTTPS_REQUIRED",
+                        "CRM_INVALID_CHECK",
+                        "CRM_INVALID_INPUT",
+                        "CRM_INVALID_QUERY",
+                        "CRM_INVALID_STORE",
+                        "CRM_INVALID_SUBJECT",
+                        "CRM_INVALID_VIEW",
+                        "CRM_JSON_INVALID",
+                        "CRM_QUERY_CREDENTIAL_REJECTED"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem401_2": {
+        "description": "Unauthorized: CRM_AUTH_REQUIRED, CRM_CHALLENGE_INVALID",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          },
+          "WWW-Authenticate": {
+            "$ref": "#/components/headers/WWW-Authenticate"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 401
+                    },
+                    "title": {
+                      "const": "Unauthorized"
+                    },
+                    "code": {
+                      "enum": [
+                        "CRM_AUTH_REQUIRED",
+                        "CRM_CHALLENGE_INVALID"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem403_2": {
+        "description": "Forbidden: CRM_DESTINATION_MISMATCH, CRM_STORE_FORBIDDEN",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 403
+                    },
+                    "title": {
+                      "const": "Forbidden"
+                    },
+                    "code": {
+                      "enum": [
+                        "CRM_DESTINATION_MISMATCH",
+                        "CRM_STORE_FORBIDDEN"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem409_3": {
+        "description": "Conflict: CRM_CHALLENGE_USED",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 409
+                    },
+                    "title": {
+                      "const": "Conflict"
+                    },
+                    "code": {
+                      "enum": [
+                        "CRM_CHALLENGE_USED"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem413": {
+        "description": "Content Too Large: CRM_BODY_TOO_LARGE",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 413
+                    },
+                    "title": {
+                      "const": "Content Too Large"
+                    },
+                    "code": {
+                      "enum": [
+                        "CRM_BODY_TOO_LARGE"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem415": {
+        "description": "Unsupported Media Type: CRM_ENCODING_UNSUPPORTED, CRM_JSON_REQUIRED",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 415
+                    },
+                    "title": {
+                      "const": "Unsupported Media Type"
+                    },
+                    "code": {
+                      "enum": [
+                        "CRM_ENCODING_UNSUPPORTED",
+                        "CRM_JSON_REQUIRED"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem503_3": {
+        "description": "Service Unavailable: CRM_CAPACITY, CRM_CLOCK_INVALID, CRM_CONFIG_INVALID, CRM_DISABLED, CRM_RATE_CAPACITY",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 503
+                    },
+                    "title": {
+                      "const": "Service Unavailable"
+                    },
+                    "code": {
+                      "enum": [
+                        "CRM_CAPACITY",
+                        "CRM_CLOCK_INVALID",
+                        "CRM_CONFIG_INVALID",
+                        "CRM_DISABLED",
+                        "CRM_RATE_CAPACITY"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem400_6": {
+        "description": "Bad Request: CRM_HTTPS_REQUIRED, CRM_INVALID_QUERY, CRM_QUERY_CREDENTIAL_REJECTED",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 400
+                    },
+                    "title": {
+                      "const": "Bad Request"
+                    },
+                    "code": {
+                      "enum": [
+                        "CRM_HTTPS_REQUIRED",
+                        "CRM_INVALID_QUERY",
+                        "CRM_QUERY_CREDENTIAL_REJECTED"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem400_7": {
+        "description": "Bad Request: CRM_BODY_INVALID, CRM_DUPLICATE_COOKIE, CRM_HTTPS_REQUIRED, CRM_INVALID_COOKIE, CRM_INVALID_QUERY, CRM_JSON_INVALID, CRM_QUERY_CREDENTIAL_REJECTED, CRM_UNKNOWN_FIELD",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 400
+                    },
+                    "title": {
+                      "const": "Bad Request"
+                    },
+                    "code": {
+                      "enum": [
+                        "CRM_BODY_INVALID",
+                        "CRM_DUPLICATE_COOKIE",
+                        "CRM_HTTPS_REQUIRED",
+                        "CRM_INVALID_COOKIE",
+                        "CRM_INVALID_QUERY",
+                        "CRM_JSON_INVALID",
+                        "CRM_QUERY_CREDENTIAL_REJECTED",
+                        "CRM_UNKNOWN_FIELD"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem401_3": {
+        "description": "Unauthorized: CRM_TICKET_INVALID",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          },
+          "WWW-Authenticate": {
+            "$ref": "#/components/headers/WWW-Authenticate"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 401
+                    },
+                    "title": {
+                      "const": "Unauthorized"
+                    },
+                    "code": {
+                      "enum": [
+                        "CRM_TICKET_INVALID"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem403_3": {
+        "description": "Forbidden: CRM_SAME_ORIGIN_REQUIRED, CRM_STORE_FORBIDDEN",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 403
+                    },
+                    "title": {
+                      "const": "Forbidden"
+                    },
+                    "code": {
+                      "enum": [
+                        "CRM_SAME_ORIGIN_REQUIRED",
+                        "CRM_STORE_FORBIDDEN"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem403_4": {
+        "description": "Forbidden: CRM_SAME_ORIGIN_REQUIRED",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 403
+                    },
+                    "title": {
+                      "const": "Forbidden"
+                    },
+                    "code": {
+                      "enum": [
+                        "CRM_SAME_ORIGIN_REQUIRED"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem401_4": {
+        "description": "Unauthorized: CRM_SESSION_INVALID",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/X-Request-Id"
+          },
+          "X-RateLimit-Limit": {
+            "$ref": "#/components/headers/X-RateLimit-Limit"
+          },
+          "X-RateLimit-Remaining": {
+            "$ref": "#/components/headers/X-RateLimit-Remaining"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/Cache-Control"
+          },
+          "Referrer-Policy": {
+            "$ref": "#/components/headers/Referrer-Policy"
+          },
+          "WWW-Authenticate": {
+            "$ref": "#/components/headers/WWW-Authenticate"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "properties": {
+                    "status": {
+                      "const": 401
+                    },
+                    "title": {
+                      "const": "Unauthorized"
+                    },
+                    "code": {
+                      "enum": [
+                        "CRM_SESSION_INVALID"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "x-rate-limit": {
+    "windowSeconds": 60,
+    "perIp": {
+      "api": 120,
+      "browser": 60,
+      "ssoStartAdditional": 10,
+      "ticketIssueAdditional": 20,
+      "ticketExchangeAdditional": 20
+    },
+    "maximumBuckets": 5000
+  },
+  "x-auth-state": {
+    "storage": "process-memory",
+    "challengeTtlSeconds": 120,
+    "ticketMaximumTtlSeconds": 60,
+    "sessionTtlSeconds": 1800,
+    "maximumActiveChallenges": 1000,
+    "maximumActiveTickets": 1000,
+    "maximumActiveSessions": 5000,
+    "capacityBehavior": "Reject new entries with 503; do not evict active sessions. Restart/configuration change invalidates browser authentication."
+  }
+}

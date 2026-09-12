@@ -7,10 +7,9 @@
 ```bash
 cd /opt/amzguard
 npm test
-node src/cli.js store-health --self-test
 systemctl show amzguard-collector-health.service -p Result -p ExecMainStatus
 journalctl -u amzguard-collector-health.service -n 100 --no-pager -o short-iso
-systemctl list-units --type=service 'amzguard-store-health-*' 'amzguard-manual@*'
+systemctl list-units --type=service 'amzguard-*'
 ```
 
 随后从 Dashboard 打开失败店铺、检查项、判定依据与截图，最后才做单店/单项补跑。不得使用普通浏览器、Playwright、Puppeteer 或 `curl` 访问 Amazon 来“对照”。
@@ -41,7 +40,7 @@ journalctl -u amzguard-store-health-am.service --since today --no-pager -o short
 
 1. 在本地用同一份脱敏证据复现，不在生产直接猜改。
 2. 每个解析、判定或传输修复都增加离线断言。
-3. 运行 `npm test` 和 `node src/cli.js store-health --self-test`。
+3. 运行 `npm test`（已包含 `store-health --self-test`），记录本次实际结果。
 4. 本地通过后按部署流程发布，再只补跑失败店铺/检查项。
 5. 检查正式报告与 Dashboard 状态，不能仅凭 systemd `success` 验收。
 
@@ -70,13 +69,13 @@ journalctl -u amzguard-store-health-am.service --since today --no-pager -o short
 
 先区分“评价发表日期”和“截图采集时间”：今天采集到较早发表的评价是允许的，不能把发表日期改成今天。查看本店最新发表日期、评价所在页、分页覆盖和采集完成时间，再核对逐页证据。
 
-2026-09-11 修复前的历史报告可能只存末页截图，查看器会标明历史限制；翻新界面不会补出从未保存的图片。修复后的新报告应逐页保存，明细按发表日期倒序，单条链接打开对应页。只有品牌最新评价但不属于本店时，不应替代本店最新评价。
+分页上限、逐页截图条件和历史报告限制见 [README 的 Reviews 说明](../README.md#九项检查)。翻新界面不会补出从未保存的图片；只有品牌最新评价但不属于本店时，不应替代本店最新评价。
 
 若出现 `REVIEWS_EVIDENCE_PAGE_CHANGED` 或对应页图片缺失，检查采集日志和双路证据，按 [手动补跑](OPERATIONS.md#手动补跑) 对目标店铺只读复采。不要删历史、复制其他页截图或改日期来消除差异。
 
 ### 进入竞品情报后整页重载或侧栏缺少入口
 
-当前入口为 `/#intelligence`；旧 `/intelligence` 登录后会跳转。直接访问旧地址产生一次跳转属于兼容行为，从主看板切换栏目应保持九个入口与已输入状态。先刷新一次主看板以加载已部署页面，再验证切换及浏览器前进/后退；若仍重载，核对 Dashboard 实际服务的源码和部署清单。情报栏目每 15 秒的 API 数据刷新与整页重载、每 12 小时的 Amazon 周期采样是不同动作。
+当前入口为 `/#intelligence`；旧 `/intelligence` 登录后会跳转。直接访问旧地址产生一次跳转属于兼容行为，从主看板切换栏目应保持九个入口与已输入状态。先刷新一次主看板以加载已部署页面，再验证切换及浏览器前进/后退；若仍重载，核对 Dashboard 实际服务的源码和部署清单。情报栏目每 15 秒的 API 数据刷新与整页重载、至少相隔 12 小时、满足排程条件才执行的 Amazon 周期采样是不同动作。
 
 ## 3. 登录或会话问题
 
@@ -96,12 +95,12 @@ systemctl show amzguard-collector-health.service -p Result -p ExecMainStatus
 4. 官方顺序是否仍为 `updateCore → getBrowserList → startBrowser`，启动参数是否显式包含 `privacyMode=false`、`cookieTypeLoad=0`。
 5. Ads 必须最终进入 `advertising.amazon.com`；Seller Central 菜单文字不算成功进入广告控制台。
 
-允许的自动登录动作仅包括：选择已有账户、点击紫鸟 Passkey、接受验证码、等待紫鸟填入、点击登录。不得读取字段值，不得在日志/报告/截图中保存密码或验证码。认证页默认不落原文和截图；不要为了排障临时打开此取证。
+允许的自动登录动作限定在对应店铺的已批准认证页：选择唯一已有账户、继续、点击紫鸟 Passkey；MFA 恰有三个可见可用方式时选择已批准的第一项并发送一次性密码，接受紫鸟验证码、等待填入并登录；账户切换页按目标市场选择已有账户。登录失败仍须保留失败状态。原生 Passkey/市场点击当前仅在 Linux 的 `xdotool` 路径实现。不得读取字段值，不得在日志/报告/截图中保存密码或验证码。认证页默认不落原文和截图；不要为了排障临时打开此取证。
 
-若需要重启紫鸟，先暂停业务 timer，并确认没有活动采集：
+若需要重启紫鸟，先按 [部署第 4 节](../DEPLOY.md#4-停止排程并备份) 暂停所有相关 timer/path，并确认巡检、手动、情报、上传和维护任务均已结束：
 
 ```bash
-systemctl list-units --type=service 'amzguard-store-health-*' 'amzguard-manual@*'
+systemctl list-units --type=service 'amzguard-*'
 sudo systemctl restart amzguard-xvfb.service
 sudo systemctl restart amzguard-ziniao.service
 sudo systemctl start amzguard-collector-health.service
@@ -154,7 +153,7 @@ done
 stat -c '%U:%G %a %n' /opt/amzguard/config/*.json
 ```
 
-不要运行 `env`、`systemctl show-environment` 或带值的 `grep`。六个最小权限 EnvironmentFile 应为 `root:root 0600`；`product-upload.env` 只能包含双闸、上传管理员和扫描策略，不得放 Dashboard/紫鸟/通道凭据。`config/` 应为 `root:ubuntu 0750`，三个运行配置必须为 `ubuntu:ubuntu 0600` 且无凭据。Dashboard 生产模式必须有密码、至少 32 字符的 Session Secret 和 ingest token，否则应拒绝启动。
+不要运行 `env`、`systemctl show-environment` 或带值的 `grep`。六个最小权限 EnvironmentFile 应为 `root:root 0600`；`product-upload.env` 只能包含双闸、上传管理员和扫描策略，不得放 Dashboard/紫鸟/通道凭据。`config/` 应为 `root:ubuntu 0750`，三个运行配置必须为 `ubuntu:ubuntu 0600` 且无凭据。Dashboard 生产模式必须有至少一个可用用户、至少 32 字符的 Session Secret 和独立 ingest token，否则应拒绝启动；初始化与用户库要求见 [安全说明](SECURITY.md#凭据存放)。
 
 macOS 旧配置迁移：
 
@@ -189,12 +188,12 @@ find /var/lib/clamav -maxdepth 1 -type f \( -name '*.cvd' -o -name '*.cld' \) -p
 - Policy Compliance 非 `Healthy` 或 AHR 下降。
 - 明确绩效告警、违规、限制或停用风险。
 - 北京时间当天 Feedback 低于 4 分，或本店有效 ASIN 的 Review 低于 4 星。
-- 商品明确 404、Currently unavailable、无购物车/Buy Box，或真实评分下降。
+- 已确认活跃商品无购物车/Buy Box，或真实评分下降。双路确认的 404 / Currently unavailable 按第 4 节归为非在售，不等同于活跃商品异常。
 - 新的 Outlet Deal 活动。
 - VOC 为 Poor/Very Poor、退货趋势异常。
-- 11:20 仍有启用广告；18:30 仍有暂停广告或启用结果为 0。
+- 广告范围内未满足对应时段的多数有效状态规则；少数例外不能单独等同于整店异常，口径见 [广告说明](../README.md#广告范围与判定)。
 
-运营只能在人工批准的正常业务流程中处理；本系统不会修改 Listing、库存、价格、广告、店铺设置或 Amazon 退货记录。处理后安排同店同项补跑，保留前后报告和时间线。
+运营只能在人工批准的正常业务流程中处理；九项巡检不会修改 Listing、库存、价格、广告、店铺设置或 Amazon 退货记录；商品批量上传仅按 [部署中的独立授权流程](../DEPLOY.md#6-配置最小权限-environmentfile) 执行。处理后安排同店同项补跑，保留前后报告和时间线。
 
 ## 7. 钉钉或 CRM 故障
 
@@ -221,7 +220,9 @@ curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:4173/api/health
 curl -sS -o /dev/null -w '%{http_code}\n' https://123.58.218.45/api/status
 ```
 
-本机健康接口应为 `200`，未登录状态接口应为 `401`。若生产 Dashboard 因缺密码拒绝启动，这是正确的 fail-closed 行为；不要通过改为外网直监听或关闭认证绕过。
+本机健康接口应为 `200`，未登录状态接口应为 `401`。若生产 Dashboard 因缺少可用用户或会话配置拒绝启动，这是正确的 fail-closed 行为；不要通过改为外网直监听或关闭认证绕过。
+
+`npm run seed` 仅用于隔离本地界面演示：当前只生成前八项样例，未覆盖 Inbox，部分样例仍采用历史广告规则，不能作为最新业务判定或生产验证依据。
 
 移动端溢出、空状态或历史合并错误属于前端/数据问题。单店补跑后验证其他店铺仍保留各自较新的结果；旧全店报告不能覆盖新的单店报告。
 
@@ -239,10 +240,10 @@ openssl s_client -connect 123.58.218.45:443 -servername 123.58.218.45 </dev/null
 
 ## 9. 运行锁与中断恢复
 
-`out/runtime/run.lock` 防止多个 timer 或手动任务并发占用紫鸟。任务异常退出后，程序会根据 PID 与年龄判断陈旧锁并安全改名；不要一看到锁文件就删除。
+`out/runtime/run.lock` 防止多个 timer 或手动任务并发占用紫鸟。合法 JSON 锁记录的 PID 已不存在时，程序会将其改名为 `run.lock.stale-<时间戳>` 再取得新锁；PID 仍存在时拒绝并发。损坏 JSON 锁存在已确认缺陷：读取失败使年龄未计算，当前不会按预期的 6 小时自动过期。不要一看到锁文件就删除，也不要靠等待来掩盖该缺陷。
 
 ```bash
-systemctl list-units --type=service 'amzguard-store-health-*' 'amzguard-manual@*'
+systemctl list-units --type=service 'amzguard-*'
 ps -eo pid,lstart,cmd | grep '[n]ode /opt/amzguard/src/cli.js'
 stat /opt/amzguard/out/runtime/run.lock
 ```

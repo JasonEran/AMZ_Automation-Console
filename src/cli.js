@@ -23,7 +23,7 @@ const USAGE = `亚马逊自动巡检 (紫鸟 WebDriver/Selenium + Codex)
   run-check <id>    跑单个检查项 (store-health|performance|feedback|inbox|reviews|
                     asin-health|outlet|voc|ads-status)
   checks            列出 9 个检查项与排程时段
-  serve             启动看板 + 接收 API（默认 80 端口）
+  serve             启动看板 + 接收 API（默认 4173 端口）
   store-health      第 1 项：店铺健康状态检查 (Policy Compliance)
   doctor            环境自检：紫鸟 WebDriver/CLI / 配置 / 店铺清单 / Codex
   stores            列出紫鸟里可用的店铺（用于填 config/stores.json）

@@ -8,7 +8,7 @@ import { bjDateKey } from '../lib/time.js';
 import { verifyVocListPage } from '../lib/voc-list-collector.js';
 
 /**
- * Definitions for checks 2-8: where to look, how to read the page in Node as a
+ * Definitions for checks 2-9: where to look, how to read the page in Node as a
  * second opinion, and how to judge.
  *
  * Judgement contract: return {status, ok, severity, reasons, metrics, items}.
@@ -480,7 +480,7 @@ export const feedbackCheck = {
   id: 'feedback',
   no: 3,
   title: 'Recent Feedback 检查',
-  requirement: '仅检查北京时间当天 Feedback；当天出现低于 4 分评价即为异常',
+  requirement: '仅检查北京时间当天 Feedback；当天低于 4 分提醒，双路确认的亚马逊物流责任记录除外',
   paths: ['/feedback-manager/index.html', '/feedback-manager'],
   settleMs: 1200,
   // feedback-manager is an SPA and can append its view query shortly after

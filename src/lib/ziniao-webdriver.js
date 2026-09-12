@@ -24,7 +24,7 @@ import { sanitizeZiniaoWebDriverLogs } from './ziniao-log-sanitizer.js';
  *   3. attaches Selenium to the debuggingPort returned by startBrowser.
  *
  * It intentionally implements the same small surface as `Ziniao` (the
- * ziniao-cli/ZClaw adapter), so all eight check runners can share the same
+ * ziniao-cli/ZClaw adapter), so all nine check runners can share the same
  * orchestration and conservative verdict rules.
  */
 

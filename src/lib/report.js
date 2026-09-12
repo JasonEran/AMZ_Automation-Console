@@ -4,7 +4,7 @@ import { bjDateKey } from './time.js';
 import { sanitizeForStorage, sanitizeUrl } from './redact.js';
 import { STATUS_LABELS } from './verdict.js';
 
-/** Durable, private and sanitised report writers shared by all eight checks. */
+/** Durable, private and sanitised report writers shared by all nine checks. */
 
 const CSV_COLUMNS = [
   ['check', (r) => r.check], ['run_id', (r) => r.runId], ['slot', (r) => r.slot],

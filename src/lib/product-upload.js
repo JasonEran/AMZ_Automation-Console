@@ -611,8 +611,8 @@ export function summarizeProductUploadJobs(jobs = []) {
   return summary;
 }
 
-/** A new worker may safely retry navigation/file selection, but never a job
- * whose click boundary had already been crossed. */
+/** A new worker may retry work before the persisted submission boundary.
+ * File selection is already beyond that boundary and must never be retried. */
 export function recoverInterruptedProductUploads({ outDir, now = new Date() } = {}) {
   const recovered = [];
   for (const job of listProductUploadJobs({ outDir, limit: 500 })) {

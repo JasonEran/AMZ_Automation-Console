@@ -38,12 +38,12 @@ import { NodeFilter, e } from './dom-stub.js';
 import * as F from './fixtures.js';
 
 /**
- * Offline verification of everything that does not need a live Ziniao browser:
+ * Offline regression coverage without a live Ziniao browser:
  * the in-page extractor (against a DOM stub), the text parser, the reconcile
- * rules, the marker transport, and the full run pipeline against a mock CLI.
+ * rules, the marker transport, and the run pipeline against mock transports.
  *
- * This is what lets the check be trusted before `ziniao-cli config init` has
- * been run — the remaining unverified surface is exactly the bridge I/O.
+ * Passing these cases does not verify live page layouts, credentials, browser
+ * I/O, deployment state, or business outcomes.
  */
 
 let pass = 0;
@@ -696,9 +696,9 @@ export async function selfTest({ logger }) {
     ok(summary2.crm && summary2.crm.attempted === false, 'CRM 未配置时应跳过而不是报错');
   });
 
-  process.stdout.write('\n[10] 第 2～8 项判定规则与双路保守合并\n');
+  process.stdout.write('\n[10] 第 2～9 项判定规则与双路保守合并\n');
 
-  check('第 2～8 项注入脚本全部为 ASCII 且语法有效', () => {
+  check('第 2～9 项注入脚本全部为 ASCII 且语法有效', () => {
     for (const def of [...GENERIC_CHECKS, asinDetailDef, { id: 'ads-portfolios', extractor: ADS_PORTFOLIO_EXTRACTOR }]) {
       const detailScript = typeof def.detailExtractor === 'function'
         ? def.detailExtractor({ asin: 'B012345678' }) : def.detailExtractor;
@@ -2831,7 +2831,7 @@ export async function selfTest({ logger }) {
     eq(result.evidence.capture.code, 'UNREADABLE_VISIBLE_FRAME', 'capture suppression code');
   });
 
-  await checkAsync('第 2～8 项只有单路证据时不得输出正常', async () => {
+  await checkAsync('第 2～9 项通用检查只有单路证据时不得输出正常', async () => {
     const onePathZn = {
       async storeOpen() { return { storeId: 'partial-1' }; },
       async visit() { return {}; },
