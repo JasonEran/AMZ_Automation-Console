@@ -29,7 +29,7 @@ export function bjDateKey(d = new Date()) {
   return `${p.year}-${p.month}-${p.day}`;
 }
 
-/** "20260825-080012-042" — safe for filenames and unique within a minute. */
+/** "20260825-080012-042" — safe for filenames, with millisecond precision (not a uniqueness guarantee). */
 export function bjStamp(d = new Date()) {
   const p = bjParts(d);
   return `${p.year}${p.month}${p.day}-${p.hour}${p.minute}${p.second}-${String(d.getMilliseconds()).padStart(3, '0')}`;

@@ -22,7 +22,7 @@
 | `src/lib/check-runner.js` | 第 2～9 项通用双路采集、报告和报警 |
 | `src/lib/reviews-collector.js` / `src/lib/review-evidence.js` | Reviews 全量分页采集、逐页截图与评价日期关联 |
 | `src/intelligence/` | 独立商品档案、只读采样、变化规则、队列与 API，不调用 CRM |
-| `src/web/dashboard.js` / `src/web/intelligence*` | 九个工作区与保留状态的竞品情报界面 |
+| `src/web/dashboard.js` / `src/web/intelligence*` | 十个工作区与保留状态的竞品情报界面 |
 | `src/lib/ziniao-webdriver.js` | 官方 WebDriver HTTP + Selenium 传输层 |
 | `src/lib/ziniao.js` | 旧 CLI/ZClaw 兼容层与共用 marker 工具 |
 | `src/lib/ziniao-factory.js` | 按 `ziniao.mode` 选择传输层 |
@@ -45,7 +45,7 @@ npm run ads:off
 npm run ads:on
 ```
 
-退出码：`0` 全部正常；`1` 有业务异常；`2` 环境或配置问题。
+`run-check` / `run-slot` 退出码：`0` 全部正常；`1` 有业务异常或需关注项；`2` 环境、配置或采集执行失败。旧 `store-health` 命令部分店铺采集失败时也可能返回 `1`，须逐店查看报告。
 
 ## 排查顺序
 

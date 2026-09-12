@@ -1,6 +1,16 @@
 {
   "_comment": "复制为 config/config.json 后修改。config.json 已被 .gitignore 忽略。",
 
+  "_dashboard_note": "以下仅为显示配置初值；管理员在 #stores 保存后以 out/runtime/ui-config.json 为准。页面刷新只读取已保存报告，不改变 Amazon 采样频率。",
+  "dashboard": {
+    "reportRefreshSeconds": 30,
+    "progressRefreshSeconds": 2,
+    "uploadRefreshSeconds": 15,
+    "matrixPageSize": 8,
+    "listPageSize": 10,
+    "defaultView": "overview"
+  },
+
   "ziniao": {
     "mode": "webdriver",
     "_mode_note": "默认走紫鸟官方 WebDriver HTTP + Selenium。要临时退回旧 ZClaw/CLI，改为 cli。",
@@ -42,9 +52,9 @@
 
     "_concurrency_note": [
       "concurrency 只作用于店铺之间；单个店铺内部的步骤永远串行（同一亚马逊会话不并发）。",
-      "默认 1（步进）。10 个店步进约 4-12 分钟，08:00 批次完全够用，30+ 店才值得开并发。",
+      "默认 1（串行）。批次耗时受检查范围、ASIN 数、分页和会话恢复影响；先测量实际耗时，再调整并发。",
       "开并发前必须确认：紫鸟里每个店铺都有独立 IP / 指纹环境。共用环境的店同时活动会放大账号关联风险。",
-      "另外每个店是一个完整 Chromium（400MB-1GB 内存），并发数受本机内存和紫鸟套餐限制。",
+      "每个店是独立 Chromium；内存占用需按实际页面测量，并发数受本机资源和紫鸟套餐限制。",
       "staggerMs / jitterMs：错开各店的启动时刻，避免多个浏览器同一瞬间拉起。开并发时建议 3000 / 2000。"
     ],
     "concurrency": 1,
@@ -74,8 +84,8 @@
   "codex": {
     "_comment": [
       "Codex 仅在确定性解析失败 / DOM 与文本判定冲突时兜底。会把（脱敏后的）页面文本发送给 Codex 云端。",
-      "默认关闭：真机实测每次调用 >2 分钟且返回不了可解析结果，7 店一轮白耗 8 分钟。",
-      "确定性解析失败时直接判 UNKNOWN 并报警，比等一个拿不到的兜底更有用。"
+      "默认关闭；启用前需验证本机 Codex CLI 的可用性、超时和返回结构。",
+      "仅用于店铺健康的辅助判定；未取得可信证据仍须保留无法判定并提醒。"
     ],
     "enabled": false,
     "bin": "codex",
@@ -107,7 +117,7 @@
   },
 
   "crm": {
-    "_comment": "填入 CRM 导入接口后置 enabled=true。未启用时仍会生成 out/ 下的 json/csv 导出文件。",
+    "_comment": "先按 docs/CRM_EXPORT_COMPATIBILITY.md 确认 HTTPS 导入与幂等契约；设置 CRM_ENDPOINT 会启用网络推送，认证使用受保护环境变量。不要在 JSON 中填写凭据。网络推送关闭时仍生成本地兼容 CSV。",
     "enabled": false,
     "endpoint": "",
     "method": "POST",
@@ -119,7 +129,7 @@
   },
 
   "schedule": {
-    "_comment": "北京时间。install-schedule.sh 读取这里生成 launchd 计划。",
+    "_comment": "北京时间。npm run schedule:install 调用 src/schedule.js 生成当前平台计划；Linux 正式部署使用 deploy/systemd/ 中的固定 timer，修改此处不会改写已安装 timer。",
     "timezone": "Asia/Shanghai",
     "slots": [
       { "name": "am",       "at": "08:00" },

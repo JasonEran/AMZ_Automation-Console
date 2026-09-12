@@ -11,6 +11,7 @@ import { applyProgressEvent, createProgressCells } from '../lib/run-progress.js'
 import { readAdsMonitoring } from '../lib/ads-monitoring.js';
 import { scopedReviewsCheck } from '../lib/reviews-collector.js';
 import { adsPortfolioCheck } from '../lib/ads-portfolio-collector.js';
+import { refreshSelectedStores } from '../lib/config.js';
 
 function runtimePaths(outDir) {
   const dir = path.join(outDir, 'runtime');
@@ -108,17 +109,19 @@ export function releaseRunLock(lease) {
 
 async function withRunLease({ config, label, initialProgress }, fn) {
   const lease = acquireRunLock({ outDir: config.outDir, label });
-  writeRunProgress(lease, {
-    state: 'RUNNING', startedAt: new Date().toISOString(), finishedAt: null,
-    heartbeatAt: new Date().toISOString(), activityAt: new Date().toISOString(),
-    completedChecks: 0, errors: [], abortReason: null, fatalError: null, ...initialProgress,
-  });
-  const heartbeat = setInterval(() => {
-    try { writeRunProgress(lease, { heartbeatAt: new Date().toISOString() }); }
-    catch { /* A stalled heartbeat is surfaced by the dashboard, never fabricated. */ }
-  }, 5000);
-  heartbeat.unref();
+  let heartbeat;
   try {
+    const initial = typeof initialProgress === 'function' ? initialProgress() : initialProgress;
+    writeRunProgress(lease, {
+      state: 'RUNNING', startedAt: new Date().toISOString(), finishedAt: null,
+      heartbeatAt: new Date().toISOString(), activityAt: new Date().toISOString(),
+      completedChecks: 0, errors: [], abortReason: null, fatalError: null, ...initial,
+    });
+    heartbeat = setInterval(() => {
+      try { writeRunProgress(lease, { heartbeatAt: new Date().toISOString() }); }
+      catch { /* A stalled heartbeat is surfaced by the dashboard, never fabricated. */ }
+    }, 5000);
+    heartbeat.unref();
     const result = await fn(lease);
     const summaries = result?.checks ? Object.values(result.checks) : [result];
     const hasInfrastructureErrors = Object.keys(result?.errors || {}).length > 0
@@ -158,10 +161,13 @@ export async function runCheckById({ id, zn, config, stores, logger, opts = {} }
     return withRunLease({
       config,
       label: `check:${id}`,
-      initialProgress: {
-        slot: opts.slot || 'adhoc', totalChecks: 1, checkIds: [id], currentCheck: id,
-        storeTotal: stores.length, completedUnits: 0, currentUnit: null,
-        cells: createProgressCells([id], stores),
+      initialProgress: () => {
+        stores = refreshSelectedStores(config, stores);
+        return {
+          slot: opts.slot || 'adhoc', totalChecks: 1, checkIds: [id], currentCheck: id,
+          storeTotal: stores.length, completedUnits: 0, currentUnit: null,
+          cells: createProgressCells([id], stores),
+        };
       },
     }, async (lease) => {
       const onProgress = (event) => {
@@ -212,9 +218,12 @@ export async function runSlot({ slot, zn, config, stores, logger, opts = {} }) {
     return withRunLease({
       config,
       label: `slot:${slot}`,
-      initialProgress: {
-        slot, totalChecks: ids.length, checkIds: ids, storeTotal: stores.length,
-        currentCheck: null, currentUnit: null, completedUnits: 0, cells: createProgressCells(ids, stores),
+      initialProgress: () => {
+        stores = refreshSelectedStores(config, stores);
+        return {
+          slot, totalChecks: ids.length, checkIds: ids, storeTotal: stores.length,
+          currentCheck: null, currentUnit: null, completedUnits: 0, cells: createProgressCells(ids, stores),
+        };
       },
     }, (lease) => runSlot({
       slot, zn, config, stores, logger,

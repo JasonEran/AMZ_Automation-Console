@@ -66,8 +66,8 @@ function suppressProbeEvidence(report, safety, { outDir, files = [], priorCleanu
 /**
  * Bridge probe — the tool for the surface the offline self-test cannot reach.
  *
- * It runs each ziniao-cli command the check depends on, one at a time, and dumps
- * the *raw* stdout/stderr plus the inferred response shape. The point is to find
+ * It runs each ziniao-cli command the check depends on, one at a time, and retains
+ * only response shapes and sanitized findings; raw streams stay in memory. The point is to find
  * out what the bridge actually returns (none of it is documented) before trusting
  * a full patrol run, and to pinpoint which of the three exec recovery paths works.
  *

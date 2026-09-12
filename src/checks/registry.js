@@ -1,9 +1,9 @@
 /**
  * The 9 checks, in one place.
  *
- * The dashboard, the CLI and the scheduler all enumerate from here, so adding a
- * check means adding one entry plus its definition module — nothing else needs
- * to learn about it.
+ * The dashboard, the CLI and the scheduler enumerate this metadata. Execution
+ * is dispatched in run.js and the generic definitions live in definitions.js;
+ * the historical `module` fields are not used to load check implementations.
  *
  * `slots` are Beijing-time run windows. Items 1-7 and item 9 ride the 08:00 /
  * 15:30 patrol; item 8 (ads) has its own 11:20 / 18:30 windows because the

@@ -1,6 +1,6 @@
 # 生产运维手册
 
-适用环境：`123.58.218.45`、`/opt/amzguard`、Ubuntu 24.04、`Asia/Shanghai`。本文命令默认从服务器上的运维账户执行；涉及 systemd、Nginx、证书或权限时使用 `sudo`。
+适用环境：`123.58.218.45`、`/opt/amzguard`、Ubuntu 24.04、`Asia/Shanghai`。这里列出仓库模板的目标状态；实际部署版本与运行健康须通过主机验收确认。本文命令默认从服务器上的运维账户执行；涉及 systemd、Nginx、证书或权限时使用 `sudo`。
 
 ## 服务清单
 
@@ -14,7 +14,7 @@
 | `amzguard-store-health-pm.timer` | 第 1～7 项与第 9 项 | 每日 15:30 |
 | `amzguard-store-health-ads-on.timer` | 第 8 项，范围内超过 50% 应开启 | 每日 18:30 |
 | `amzguard-collector-health.timer` | 紫鸟授权、核心与配置健康 | 启动后 2 分钟，每 10 分钟 |
-| `amzguard-intelligence.timer` | 独立情报队列；单商品至少间隔 12 小时的周期采样 | 每 5 分钟检查队列 |
+| `amzguard-intelligence.timer` | 独立情报队列；单商品周期采样至少间隔 12 小时，手动队列另行处理 | 每 5 分钟检查队列 |
 | `amzguard-intelligence.service` | 每次最多只读采集一个商品，与巡检共用运行锁 | 由 timer 触发，不常驻 |
 | `amzguard-retention.timer` | 证据保留与权限修正 | 每日 03:10，带随机延迟 |
 | `amzguard-cert-renew.timer` | IP TLS 证书续期检查 | 每日两次，带随机延迟 |
@@ -28,7 +28,7 @@
 
 ### 1. 总体状态
 
-先按 Dashboard 的九个工作区查看：巡检总览、店铺风险、客户声音、商品状态、竞品情报、广告值守、上传中心、系统保障和用户管理。巡检业务页提供各自的店铺筛选、分页和行动队列；竞品情报的商品、变化、单店对标和人工复核按其独立范围展示；系统保障页集中展示实时进度、紫鸟会话、双路证据、告警历史和通道状态。再检查系统层：
+先按 Dashboard 的工作区查看：巡检总览、店铺风险、客户声音、商品状态、竞品情报、广告值守、上传中心、系统保障、用户管理和店铺配置。巡检业务页提供各自的店铺筛选、分页和行动队列；竞品情报的商品、变化、单店对标和人工复核按其独立范围展示；系统保障页集中展示实时进度、紫鸟会话、双路证据、告警历史和通道状态。再检查系统层：
 
 ```bash
 sudo sh /opt/amzguard/deploy/verify-linux.sh
@@ -65,7 +65,7 @@ journalctl -u amzguard-store-health-am.service -n 120 --no-pager -o short-iso
 
 - `0`：本批所有已运行项正常。
 - `1`：发现业务异常。systemd unit 配置了 `SuccessExitStatus=0 1`，因此 service 的 `Result=success` 不表示业务全绿；以报告和 Dashboard 为准。
-- `2`：环境、配置、登录、采集或程序执行失败；systemd 应显示失败。
+- `2`：`run-slot` / `run-check` 存在环境、配置、登录、采集或程序执行失败；systemd 应显示失败。旧 `store-health` 命令只有全部店铺均采集错误才返回 `2`，部分失败可能返回 `1`，仍须逐店查看报告。
 
 ### 3. 采集器健康
 
@@ -89,15 +89,59 @@ journalctl -u amzguard-collector-health.service -n 80 --no-pager -o short-iso
 
 当前从非健康状态恢复为双路 `Healthy` 时，恢复记录进入历史 `notes`，当前单元显示正常；AHR 真实下降仍是业务关注。ASIN 的 `weekly` 低频复核和 `disabled` 人工停检在商品清单中独立展示，不计入正常数。调整 `config/asins.json` 前必须先核对真机证据；单次空壳或采集失败不构成停检依据。
 
-Feedback 只按北京时间当天判断：当天存在低于 4 分的记录就保持提醒，历史日期不跨天告警；日期缺失或两路当天数量冲突时按采集异常处理，不能假绿。Customer Reviews 和 VOC 的记录型事件使用稳定唯一键：首次出现时告警并写入历史；后续页面仍保留同一记录时显示“已提醒并归档”，不再重复占用当前待办。Reviews 以历史已见键去重，同一评价暂时消失后再次出现不会成为新差评；日期较早但首次发现的评价仍会提醒。VOC 的再次出现和 Poor 恶化为 Very Poor 按其事件规则重新判定。绩效违规不归档：Amazon 页面只要仍显示非零违规、限制或风险，就持续保留为业务待办，只有页面明确清除后才恢复正常。证据不完整时不更新去重基线，仍显示采集异常或原业务异常。
+Feedback 只按北京时间当天判断：当天有效的低于 4 分记录持续提醒，历史日期不跨天告警。仅排除页面明确标注由亚马逊承担物流责任的记录，并保留排除理由；两路排除数量不一致、未排除低分缺少可解析日期、两路日期范围未获证实或当天数量冲突时不能判为正常。Customer Reviews 和 VOC 的记录型事件使用稳定唯一键：首次出现时告警并写入历史；后续页面仍保留同一记录时显示“已提醒并归档”，不再重复占用当前待办。Reviews 以历史已见键去重，同一评价暂时消失后再次出现不会成为新差评；日期较早但首次发现的评价仍会提醒。VOC 的再次出现和 Poor 恶化为 Very Poor 按其事件规则重新判定。绩效违规不归档：Amazon 页面只要仍显示非零违规、限制或风险，就持续保留为业务待办，只有页面明确清除后才恢复正常。证据不完整时不更新去重基线，仍显示采集异常或原业务异常。
 
-Inbox（第 9 项）只读取买家消息列表：出现未读或页面标记为待回复的消息即为业务待处理，交运营在 24 小时内回复，未读清零后自动恢复正常，因此同一批未读会在每个批次持续提醒。系统绝不打开消息会话——打开等于把消息标记为已读，属于 Amazon 写操作。列表行只保留日期、未读/待回复标记和可见订单号，不采集买家姓名、主题和消息正文，也不推送 CRM。若页面未暴露可判定的未读状态、两路计数无法同时量化，或无法确认列表已无下一页，一律显示采集待修复，不得手工改成正常。
+Inbox（第 9 项）只读取买家消息列表，绝不打开会话。未读或待回复消息持续提醒，交运营处理；只有完整双路证据确认清零才恢复正常。计数无法同时量化、未读状态不明或末页未确认时，保持采集待修复。结构化结果、列表证据和 CRM 摘要的边界见 [README 的第 9 项说明](../README.md#九项检查)。
 
-广告任务先读取 Dashboard 中每店独立的“广告名称包含”规则，并在状态筛选之前把该值写入唯一、语义明确的活动名称搜索框，再精确复核输入值。缺少规则、搜索框歧义或复核失败时在读取状态前停止，绝不回退成全账户检查。限定范围后，按广告组合及其活动的有效状态检查：11:20 应关闭，18:30 应开启，每店范围内超过 50% 符合才满足多数规则，少数例外留档；各半需要关注，多数不符告警。缺页、未知状态、双路冲突和投放受限仍单独处理，不能被多数比例掩盖。这要求目标范围的完整证据，不是抽样前几条；不点击任何广告开关。规则由管理员在广告值守页修改，保存到 `out/runtime/ads-rules.json`（`0600`），下次巡检生效。
+广告默认按每店“广告名称包含”筛选广告组合，再完整读取命中组合的子活动；规则与有效状态分母见 [README 的广告口径](../README.md#广告范围与判定)。11:20 检查应关闭，18:30 检查应开启，不点击开关。管理员在广告值守页保存的规则位于 `out/runtime/ads-rules.json`（`0600`），下次巡检生效；范围缺失或证据不完整时保持采集待修复，不能改为全账户抽样。广告页的定期刷新只重读已有报告，不会重新采样 Amazon。
 
 Amazon Ads 可能同时下发旧固定 ID 筛选器和新版 KAT/Shadow DOM 筛选器。自动化只接受活动表格外、同一弹层中唯一的 Enabled/Paused 成对单选项，且 Apply 必须与该单选组绑定。活动行的 switch 不会被视为筛选器。若新界面无法完成这些结构证明，必须保持 `PARTIAL_EVIDENCE`，不得根据按钮位置猜测点击。
 
 `amzguard-collector-health.timer` 在业务巡检持有 `run.lock` 时会延后深度 `updateCore` 检查，保留上一次权威健康结果和本次 deferred 时间。这是避免授权健康探针与店铺 start/stop 并发，不是监控缺失。
+
+## 店铺与页面配置
+
+管理员在 `/#stores` 新增、编辑、启用或停用店铺。新增默认为停用，先核对紫鸟绑定和各检查的适用范围，再启用；保存本地配置不会访问 Amazon、启动任务、修改 CRM 或修改服务器 timer。新店是否进入下一次巡检取决于启用状态及实际排程；没有报告时显示未运行，不能视为正常。
+
+| 字段 | 含义与限制 |
+|---|---|
+| `key` | 创建后不可修改的监测标识，1–64 位，字母数字开头，后续允许 `._-`；停用后仍占用该 key，避免历史串店 |
+| `displayName` | 工作台与 CRM 店铺列表的展示名称；可独立修改，不影响紫鸟匹配 |
+| `name` | 紫鸟中的精确店铺名称；未填 ID 时用于匹配，不能只当作显示名称 |
+| `id` | 可空或数字 `browserId`，优先于名称；不填写 browserOauth、密码或其他凭据；历史不透明绑定只隐藏展示，未编辑时保留 |
+| `market` / `host` | 从后端允许列表选择的站点代码和精确 Seller Central 域名；不接受任意 URL。允许配置不代表所有检查支持该地区，Reviews、广告及上传仍有各自的页面限制 |
+| `enabled` | 是否参加后续监测；停用不删除报告。已有上传任务时不得借停用绕过确认或未知结果处理 |
+
+新增店铺及已有绑定的编辑必须保留 `name/id` 至少一个；旧的无绑定停用占位记录可以保留，重新启用前必须补齐绑定。将现有 key 改绑为另一家实际店铺会混淆历史归属；新业务店铺应创建新 key。广告名称范围仍在“广告值守”维护，使用 `out/runtime/ads-rules.json`，店铺编辑器不建立第二套规则。CRM 店铺映射和授权名单独立维护，见 [CRM API](CRM_API.md#6-监测站配置)；新增店铺不会自动扩大机器令牌的授权。
+
+初始店铺来自 `config/stores.json`。首次前端保存会将完整清单（含停用店铺）写入 `out/runtime/store-registry.json`，随后该文件是店铺配置的唯一来源；Dashboard、CRM 读 API 和之后启动的 CLI/工作者都使用它。修改 bootstrap 文件此时不生效。没有管理文件时才允许回退；管理文件损坏或权限异常会拒绝读取，不能通过删除文件或空白覆盖来“恢复默认”。保存文件权限为 `0600`，目录为 `0700`，包含版本和最后修改人/时间；备份时须保留。检查进程在取得运行锁后重读所选店铺的绑定并排除停用店；保留本次命令的明确店铺选择，不加入启动后新增的店铺。上传工作者在锁内读取完整启用清单后按任务 key 选择；已经开始的采样不会中途换店。
+
+店铺绑定、启停及新增启用店铺的保存使用共享 `run.lock`，活动采集/上传期间返回 409。同店存在 `STAGED/QUEUED/PROCESSING/PREPARED/SUBMITTING/UNKNOWN` 上传记录，或账本不能完整核对时，拒绝改绑定或停用；展示名称仍可编辑。文件暂存提交前会再次检查绑定，避免大文件传输期间改店。管理文件另有独立保存锁及内容版本：两人同时编辑时，旧版本保存返回 409，前端保留草稿；先重载并比较，不能盲目重试。崩溃留下的 `store-registry.json.lock` / `ui-config.json.lock` 不会自动偷锁，须由运维核对无保存进程及目标文件完整性后处理。
+
+同页“显示配置”管理以下参数，只改变网页读取已保存数据和分页的方式，不改变 Amazon 采样、业务阈值、权限或上传闸：
+
+| 参数 | 默认 | 允许范围 |
+|---|---|---|
+| `reportRefreshSeconds` | 30 秒 | 5–300 秒 |
+| `progressRefreshSeconds` | 2 秒 | 1–30 秒 |
+| `uploadRefreshSeconds` | 15 秒 | 5–120 秒 |
+| `matrixPageSize` | 8 条 | 1–100 条 |
+| `listPageSize` | 10 条 | 1–100 条；上传任务受原接口 50 条上限约束 |
+| `defaultView` | `overview` | 实际工作区 ID；普通用户不会默认进入管理员页 |
+
+初值可写入 `config/config.json` 的 `dashboard` 对象（参见示例配置），修改初值后需重启 Dashboard；首次前端保存后以 `out/runtime/ui-config.json` 为准。配置不保存到浏览器 localStorage，切换工作区保留当前页的未保存草稿。竞品情报有独立刷新机制，CRM 的分页上限仍由其接口契约约束。
+
+以下为监测站前端使用的管理接口，不能使用 CRM Bearer 或只读 Cookie 调用，不属于 CRM 取数契约：
+
+| 方法与路径 | 请求 / 返回 |
+|---|---|
+| `GET /api/admin/stores` | 管理员读取 `{revision, contentSHA, source, stores, options, csrfToken, canManage}`；`source` 为 `bootstrap/managed/missing` |
+| `POST /api/admin/stores` | `{expectedRevision, store}`，成功 201；`store` 使用上表字段 |
+| `PATCH /api/admin/stores/{key}` | `{expectedRevision, patch}`，只提交已改字段，不能改 key；成功 200 |
+| `GET /api/ui-config` | 已登录 Dashboard 用户读取 `{revision, source, settings, csrfToken, canManage}` |
+| `PUT /api/admin/ui-config` | 管理员提交 `{expectedRevision, settings}`，settings 包含全部六项；成功 200 |
+
+写请求使用同源 `application/json` 和 Dashboard 会话，并将 GET 返回的 `csrfToken` 放入 `x-amzguard-csrf` 请求头；正文最多 32 KiB，不接受 query 或未知字段。成功写入返回最新完整上下文；错误为 `{ok:false,error,code?}`（既有登录/CSRF错误可能没有 code）。401 重新登录，403 核对管理员身份/CSRF，409 核对配置版本、活动任务或上传保护，400/415 修正字段或类型，503 检查损坏配置或权限。无删除店铺接口；历史报告不会被这些接口改写。凭据、任意 Amazon 路径、实际采集排程、CRM 网络推送和上传双闸仍由各自受保护配置管理。
 
 ## 手动补跑
 
@@ -107,7 +151,7 @@ Amazon Ads 可能同时下发旧固定 ID 筛选器和新版 KAT/Shadow DOM 筛�
 amzguard-manual@<action>:<store-key>.service
 ```
 
-`store-key` 必须取自 `config/stores.json`，并只含字母、数字、点、下划线或连字符。
+`store-key` 必须取自当前有效店铺清单（管理页；未启用管理文件时为 `config/stores.json`），为 1–64 位、以字母或数字开头，仅含字母、数字、点、下划线或连字符。
 
 单项补跑示例：
 
@@ -116,11 +160,9 @@ sudo systemctl start --no-block 'amzguard-manual@reviews:US-01.service'
 journalctl -fu 'amzguard-manual@reviews:US-01.service'
 ```
 
-可用检查项：`store-health`、`performance`、`feedback`、`inbox`、`reviews`、`asin-health`、`outlet`、`voc`。广告单项必须使用带明确期望的 `ads-status-off` 或 `ads-status-on`；不接受含义不清的 adhoc 广告判定。
+可用检查项：`store-health`、`performance`、`feedback`、`inbox`、`reviews`、`asin-health`、`outlet`、`voc`。广告单项使用带明确期望的 `ads-status-off` 或 `ads-status-on`；此手动入口不接受 adhoc 广告判定。定向商品可使用 `asin-health-<ASIN>:<store-key>`（ASIN 为 `B0` 开头的 10 位大写字母/数字）；`product-upload-probe:<store-key>` 仅检查固定上传页控件，不选择文件或提交。
 
-Review 采集会在每一页通过双路验证后立即保存截图，翻页前后绑定页码、评论 ID、发表日期范围和截图采集时间。默认截图指向本店最新发表评价所在页；明细和历史按发表日期从新到旧显示，每条评价可打开其所在页截图。截图前后评论行发生变化时拒绝关联该图片。无法解析的日期保留待核验，旧日期的新发现仍按原规则提醒。
-
-旧报告只保留末页截图的，会明确标注页码与限制，不修改历史图片和发表日期。证据页中的采集时间统一显示北京时间；评论发表日期保持 Amazon 原始日期口径，两者不能混用。
+Reviews 补跑后核对分页覆盖、评价发表日期与对应页证据，具体上限和历史截图限制见 [README 的 Reviews 说明](../README.md#九项检查)。截图缺失或页身份变化的排查见 [Reviews 截图与日期](TROUBLESHOOTING.md#reviews-截图显示旧评价或日期不一致)。
 
 单店整批补跑：
 
@@ -134,10 +176,10 @@ journalctl -fu 'amzguard-manual@am:US-01.service'
 补跑前检查：
 
 ```bash
-systemctl list-units --type=service 'amzguard-store-health-*' 'amzguard-manual@*'
+systemctl list-units --type=service 'amzguard-*'
 ```
 
-程序有全局运行锁；已有巡检时新任务应以采集失败退出，而不是同时打开同一紫鸟环境。不要删除新鲜的 `out/runtime/run.lock` 来强行并发。只有确认记录的 PID 已不存在且锁超过程序定义的失效期限时，才按排障文档处理。
+程序有全局运行锁；已有巡检时新任务应以采集失败退出，而不是同时打开同一紫鸟环境。不要删除新鲜的 `out/runtime/run.lock` 来强行并发。合法锁记录的 PID 已不存在时，程序可直接改名恢复，不要求额外等待；损坏记录目前不能依赖自动过期，按 [运行锁与中断恢复](TROUBLESHOOTING.md#9-运行锁与中断恢复) 人工核验。
 
 ## 日志与证据
 
@@ -174,7 +216,7 @@ journalctl -f -u amzguard-ziniao.service
 
 ```bash
 find /opt/amzguard/out -xdev -type d ! -perm 0700 -printf '%m %p\n'
-find /opt/amzguard/out -xdev -type f ! -perm 0600 -printf '%m %p\n'
+find /opt/amzguard/out -xdev -path '*/.evidence-quarantine' -prune -o -type f ! -perm 0600 -printf '%m %p\n'
 ```
 
 ## 钉钉与 CRM
@@ -215,14 +257,14 @@ Dashboard“系统保障”页的“紫鸟会话中心”会把登录流程受�
 
 ## 保留策略与容量
 
-默认策略：页面证据 45 天、报告 365 天、应用日志 60 天、`alerts/` 与 `channels/` 审计 365 天；Nginx 日志沿用 Ubuntu 的系统轮转策略。只有 `state/`、CRM 幂等账本 `channels/crm/ledger.json` 与各级 `latest.json` 长期保留。先 dry-run：
+默认策略按文件 mtime 计算：页面证据 45 天、报告 365 天、应用日志 60 天、`alerts/`、`channels/` 与上传任务/审计 365 天，上传 payload 7 天；Nginx 日志沿用 Ubuntu 的系统轮转策略。`state/`、CRM 幂等账本 `channels/crm/ledger.json`、`runtime/` 下的 `ads-monitoring.json/ads-rules.json/users.json/store-registry.json/ui-config.json` 与各级 `latest.json` 不按期限删除。先 dry-run：
 
 ```bash
 cd /opt/amzguard
 sudo -u ubuntu /usr/local/bin/node src/tools/retention.js
 ```
 
-确认候选数量和备份后，才手动触发正式清理：
+当前权限修正仍会改变 `.evidence-quarantine/` 内应为 `000` 的隔离文件。存在隔离证据时，先停止 retention timer 并处理该代码问题，不执行 `--apply` 或启动清理服务。排除上述情形或修复后，确认候选数量和备份，才手动触发正式清理：
 
 ```bash
 sudo systemctl start amzguard-retention.service
@@ -237,11 +279,11 @@ journalctl -u amzguard-retention.service -n 40 --no-pager
 
 - 代码与模板：`/opt/amzguard`，排除 `node_modules/` 和 `out/`。
 - 运行数据：完整 `out/`，包含报告、状态、证据、CRM 账本和通道审计。
-- 运行配置：`config/*.json`，其中不应有凭据。
+- 运行配置：`config/*.json` 以及 `out/runtime/store-registry.json`、`ui-config.json` 和广告配置；非秘密配置中不应有凭据。不要只恢复 bootstrap 店铺文件而遗漏当前管理清单。
 - 凭据与策略：六个最小权限 EnvironmentFile 由外部密码管理系统或加密备份单独托管；不进入普通 tar、对象存储或工单，也不合并成全量文件。升级遗留的 `amzguard.env` 仅在回滚观察期内保持 root-only，确认新 unit 全部只引用拆分文件后按凭据销毁流程移除。
 - 系统配置：`/etc/systemd/system/amzguard-*`、Nginx site、logrotate 配置和证书续期配置。
 
-一致性要求较高时先停止 timer，并等待活动采集自然完成。恢复时先解压到隔离目录核对清单和权限，再恢复到目标；不要直接覆盖现有 `out/`。恢复 CRM 账本必须与对应报告一起进行，防止重复导入。
+一致性要求较高时先按 [停止排程并备份](../DEPLOY.md#4-停止排程并备份) 停止 timer/path，并等待活动任务自然完成。恢复时先解压到隔离目录核对清单和权限，再恢复到目标；不要直接覆盖现有 `out/`。恢复 CRM 账本必须与对应报告一起进行，防止重复导入。
 
 恢复后按顺序验证：离线测试、配置无内联凭据、systemd unit、Nginx、Dashboard 登录、collector-health、单店真机、通道状态、timer 下一次时间。
 

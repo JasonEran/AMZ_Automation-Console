@@ -25,7 +25,7 @@ export const CHECK_NAME = 'store-health';
 const CHECK_VERSION = '1.0.0';
 
 /**
- * Item 1 of 8: store health check.
+ * Item 1 of 9: store health check.
  *
  * Verdict rule, straight from the requirement: Policy Compliance == Healthy is
  * normal; anything else is an anomaly. "Anything else" deliberately includes

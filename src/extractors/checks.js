@@ -1,5 +1,5 @@
 /**
- * In-page extractors for checks 2-8.
+ * In-page extractors for checks 2-9.
  *
  * Shared constraints (same as policy-compliance): ASCII only, no backticks, no
  * `${`, ES5 syntax. Each returns an object; `landed` tells the runner whether we
@@ -505,7 +505,7 @@ out.filters.selectedStars.sort(); out.filters.starOptions.sort();
 /**
  * Runs on a public product detail page (not Seller Central): can the page open,
  * is there an add-to-cart control, and what is the current star rating? The
- * rating is compared against the previous run on the Node side.
+ * rating is compared against the previous Beijing calendar day's baseline on the Node side.
  */
 export const ASIN_IMAGE_ERROR_TEXT_EXTRACTOR = String.raw`
 var text = [];

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { createAlerter } from '../lib/alert.js';
 import { acquireRunLock, releaseRunLock } from '../checks/run.js';
-import { loadConfig } from '../lib/config.js';
+import { loadConfig, readEffectiveStores } from '../lib/config.js';
 import { createLogger } from '../lib/log.js';
 import {
   PRODUCT_UPLOAD_PAGE,
@@ -110,8 +110,10 @@ export async function runProductUploadWorker({ config, stores, logger, zn: provi
   let job = null;
   let openedStoreId = null;
   let stateAtFailure = null;
-  const zn = providedZiniao || createZiniao({ config, logger });
+  let zn;
   try {
+    if (config._storesPath) stores = readEffectiveStores(config);
+    zn = providedZiniao || createZiniao({ config, logger });
     recoverInterruptedProductUploads({ outDir: config.outDir });
     job = oldestQueued(config.outDir);
     if (!job) return { code: 0, processed: false, reason: 'empty' };

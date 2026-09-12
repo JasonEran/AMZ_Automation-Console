@@ -22,7 +22,7 @@ import { isConfigMissingError, truncate } from './ziniao.js';
 import { collectVocList, selectVocListPage, verifyVocListPage } from './voc-list-collector.js';
 
 /**
- * Generic runner shared by checks 2-8.
+ * Generic runner shared by checks 2-9, except the dedicated ASIN runner.
  *
  * Every check follows the same shape — open the store browser, land on one or
  * more Seller Central pages, extract the same facts two independent ways (DOM
@@ -496,8 +496,8 @@ async function collectDetails({ zn, session, def, store, config, logger, listUrl
   const maxDetailsPerSession = Math.max(1, Number(def.detailSessionMaxItems || 8));
   // A poisoned Chromium renderer can survive the first profile reopen while
   // the ZiNiao extension is restoring the marketplace tab. Keep retries
-  // bounded, but allow two fresh-session retries for the same read-only VOC
-  // detail before failing closed. This is intentionally per ASIN so one bad
+  // bounded by the configured limit (four fresh-session retries by default)
+  // for each read-only VOC detail before failing closed. One bad
   // row cannot consume the retry budget of the remaining store.
   const retryCounts = new Map();
   const maxDetailRetries = Math.max(0, Number(def.detailMaxRetries ?? 4));
@@ -1449,7 +1449,7 @@ async function checkOneStore({ zn, store, config, logger, def, dirs, stamp, prev
         result.notes = sanitizeForStorage(v.notes || [], { rootDir: config.outDir });
         result.baselineEligible = v.baselineEligible !== false;
 
-        // Checks 2-8 inherit item 1's dual-path safety rule: one path may be
+        // Generic checks 2-9 inherit item 1's dual-path safety rule: one path may be
         // enough to report a problem, but never enough to assert normal.
         if (result.ok && !(domLanded && textLanded)) {
           result.ok = false;

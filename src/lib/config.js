@@ -7,6 +7,7 @@ import {
   loadDingTalkCredentials,
 } from './credentials.js';
 import { readAdsRules } from './ads-rules.js';
+import { readStoreRegistry } from './store-registry.js';
 
 export const ROOT = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..', '..');
 
@@ -284,6 +285,32 @@ function applyEnv(cfg) {
   return cfg;
 }
 
+function effectiveRows(config, rows) {
+  const rules = readAdsRules(config.outDir);
+  return rows.filter(store => store.enabled !== false).map(store => rules.has(store.key)
+    ? { ...store, adsNameContains: rules.get(store.key) } : store);
+}
+
+/** Refresh non-secret store bindings after acquiring the shared run lease.
+ * Does not load general configuration, environment credentials or Keychain.
+ */
+export function readEffectiveStores(config) {
+  if (!config?._storesPath) throw new Error('缺少店铺配置来源，不能刷新店铺绑定');
+  return effectiveRows(config, readStoreRegistry({ outDir: config.outDir,
+    storesPath: config._storesPath, defaultHost: config.storeHealth?.defaultHost || DEFAULTS.storeHealth.defaultHost }).stores);
+}
+
+/** Preserve a started command's explicit selection and order, using fresh
+ * bindings only. Injected offline fixtures without source metadata stay intact.
+ */
+export function refreshSelectedStores(config, previousStores) {
+  if (!config?._storesPath) return previousStores;
+  const current = new Map(readEffectiveStores(config).map(store => [store.key, store]));
+  const selected = previousStores.map(store => current.get(store.key)).filter(Boolean);
+  if (previousStores.length && !selected.length) throw new Error('选定店铺已停用或不存在，未启动店铺浏览器');
+  return selected;
+}
+
 export function loadConfig({ configFile, storesFile } = {}) {
   const cfgPath = configFile
     ? path.resolve(configFile)
@@ -313,36 +340,15 @@ export function loadConfig({ configFile, storesFile } = {}) {
   config._configPath = cfgPath;
   config._configFromExample = usedExample;
   config._root = ROOT;
+  config._storesPath = storesPath;
 
-  let stores = [];
-  let storesMissing = false;
-  if (fs.existsSync(storesPath)) {
-    const raw = readJson(storesPath);
-    stores = Array.isArray(raw) ? raw : raw.stores || [];
-  } else {
-    storesMissing = true;
-  }
-
-  stores = stores
-    .filter((s) => s && s.enabled !== false)
-    .map((s, i) => ({
-      key: s.key || s.name || s.id || `store-${i + 1}`,
-      name: s.name || '',
-      id: s.id || '',
-      host: s.host || config.storeHealth.defaultHost,
-      market: s.market || '',
-      paths: s.paths || null,
-      adsNameContains: String(s.adsNameContains || '').trim(),
-    }))
-    .filter((s) => s.name || s.id);
+  const registry = readStoreRegistry({ outDir: config.outDir, storesPath, defaultHost: config.storeHealth.defaultHost });
+  const storesMissing = registry.source === 'missing';
 
   // Dashboard-managed advertising scope belongs in the writable runtime
   // area, not in root-controlled config/. Static values remain bootstrap
   // defaults; a durable runtime rule takes precedence for every process.
-  const runtimeAdsRules = readAdsRules(config.outDir);
-  stores = stores.map((store) => runtimeAdsRules.has(store.key)
-    ? { ...store, adsNameContains: runtimeAdsRules.get(store.key) }
-    : store);
+  const stores = effectiveRows(config, registry.stores);
 
   const seenStoreKeys = new Set();
   for (const store of stores) {

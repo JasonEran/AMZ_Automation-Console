@@ -274,7 +274,7 @@ out/runtime/             独立情报进度与断点
 
 ### 7.4 接口与访问
 
-拟增加 `/api/intelligence/overview`、`/targets`、`/events`、`/history`、`/market`、`/discovery`、`/progress` 等受保护读取接口，以及专用的名单编辑、市场导入和事件备注接口。它们目前不存在。
+原方案拟增加 overview、targets、events、history、market、discovery、progress 等情报接口，以及名单编辑、市场导入和事件备注接口。该清单是当时的设计备选，不能作为现行路由使用；第一版的实际方法与路径见[接口约定](INTELLIGENCE_V1.md#接口约定)，市场导入与新品发现仍未实现。
 
 角色沿用现有管理员/运营，不改变既有角色含义；管理员管理名单、规则和导入，运营查看情报并维护自己的备注。所有本地写接口检查会话、CSRF、字段白名单和审计。市场文件导入与 Amazon 商品上传使用不同接口、存储区及处理链，避免数据文件进入 Amazon 提交入口。
 

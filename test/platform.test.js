@@ -679,6 +679,7 @@ test('retention dry-run preserves data and apply deletes only eligible in-root f
     path.join(outDir, 'product-uploads', 'jobs', `upl_${'a'.repeat(32)}`, 'payload.csv'),
   ];
   const keepFiles = [
+    ...['users', 'ads-rules', 'ads-monitoring', 'store-registry', 'ui-config'].map(name => path.join(outDir, 'runtime', `${name}.json`)),
     path.join(outDir, 'state', 'reviews.json'),
     path.join(outDir, 'channels', 'crm', 'ledger.json'),
     path.join(outDir, 'reviews', 'latest.json'),

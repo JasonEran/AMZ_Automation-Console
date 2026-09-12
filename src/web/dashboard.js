@@ -1,4 +1,6 @@
 import { OPERATOR_LESSONS, ONBOARDING_STYLES, ONBOARDING_ENTRY, ONBOARDING_MARKUP, installOperatorTour, normalizeTourRecord } from './onboarding.js';
+import { STORE_SETTINGS_STYLES, STORE_SETTINGS_MARKUP, installStoreSettings } from './store-settings.js';
+import { UI_DEFAULTS } from '../lib/ui-config.js';
 import fs from 'node:fs';
 
 // Trusted local assets are bundled with the shell, with no extra document
@@ -196,6 +198,7 @@ export const DASHBOARD_HTML = `<!doctype html>
   @media(max-width:900px){.run-stores{grid-template-columns:repeat(2,minmax(0,1fr))}.execution-panel .runbar{grid-template-columns:1fr auto}.execution-panel .run-track{grid-row:2;grid-column:1/-1}.execution-panel .run-value{grid-column:2;grid-row:1}}
   @media(max-width:540px){.run-stores{grid-template-columns:1fr;padding:0 14px 14px}.execution-panel .runbar{margin:0 14px 14px;padding:12px;gap:12px}.execution-panel .section-head{align-items:flex-start;gap:8px}.run-connection{white-space:normal;text-align:right}.execution-panel .run-title b{font-size:12px}.execution-panel .run-value{font-size:13px}}
 ${ONBOARDING_STYLES}
+${STORE_SETTINGS_STYLES}
 </style>
 </head>
 <body>
@@ -212,9 +215,10 @@ ${ONBOARDING_STYLES}
       <a href="#ads-watch" data-view="ads-watch"><span class="navicon">广</span><span>广告值守</span></a>
       <a href="#upload" data-view="upload"><span class="navicon">UP</span><span>上传中心</span></a>
       <a href="#system" data-view="system"><span class="navicon">运</span><span>系统保障</span></a>
+      <a href="#stores" data-view="stores"><span class="navicon">配</span><span>店铺配置</span></a>
       <a href="#users" data-view="users"><span class="navicon">人</span><span>用户管理</span></a>
     </nav>
-    <div class="sidefoot">${ONBOARDING_ENTRY}<div class="live"><i class="pulse"></i><span>本地服务在线</span></div><p>进度每 2 秒 · 报告每 30 秒刷新<br>北京时间运行</p></div>
+    <div class="sidefoot">${ONBOARDING_ENTRY}<div class="live"><i class="pulse"></i><span>本地服务在线</span></div><p id="refreshCadence" style="white-space:pre-line">正在读取显示配置…</p></div>
   </aside>
   <div class="main">
     <header class="topbar">
@@ -329,6 +333,7 @@ ${ONBOARDING_STYLES}
       <section class="section"><div class="section-head"><div><h3>告警历史</h3><p>最近通知记录；测试消息会单独标注</p></div></div><div class="alert-list" id="alertList"></div><div class="pager" id="alertPager" aria-label="告警历史分页"></div></section>
       </div>
 
+${STORE_SETTINGS_MARKUP}
       <div class="view" data-view-panel="users">
       <div class="page-intro"><div><h2>用户管理</h2><p>创建、停用和维护 Dashboard 账户；每位用户都可以修改自己的密码。</p></div></div>
       <div class="two-col">
@@ -358,9 +363,10 @@ ${ONBOARDING_MARKUP}
   var uploadConfirmReturnFocus = null;
   var uploadPage = 1;
   var pages={riskMatrix:1,voiceMatrix:1,productMatrix:1,adsMatrix:1,riskIssues:1,voiceIssues:1,productIssues:1,adsIssues:1,systemIssues:1,asins:1,recommendations:1,evidenceGaps:1,alerts:1,sessions:1};
-  var PAGE_SIZE={riskMatrix:8,voiceMatrix:8,productMatrix:8,adsMatrix:8,riskIssues:10,voiceIssues:10,productIssues:10,adsIssues:10,systemIssues:10,asins:8,recommendations:8,evidenceGaps:8,alerts:8,sessions:8};
+  var PAGE_SIZE={};
+  var uiReady=false,refreshTimers=[],displaySettings=null;
   var activeView=null;
-  var VIEW_META={overview:['巡检总览','所有店铺 · 今日巡检与处置'],"store-risk":['店铺风险','账户健康与绩效风险'],"customer-voice":['客户声音','Feedback、Inbox、Reviews 与 VOC'],"product-status":['商品状态','ASIN 可售性与 Outlet 监测'],intelligence:['竞品情报','主销与对标 · 商品观察 · 变化证据'],"ads-watch":['广告值守','广告组合与活动状态 · 时段合规'],upload:['上传中心','受控 Amazon 转交通道'],system:['系统保障','紫鸟、采集、证据与通知状态'],users:['用户管理','账户、角色与密码安全']};
+  var VIEW_META={overview:['巡检总览','所有店铺 · 今日巡检与处置'],"store-risk":['店铺风险','账户健康与绩效风险'],"customer-voice":['客户声音','Feedback、Inbox、Reviews 与 VOC'],"product-status":['商品状态','ASIN 可售性与 Outlet 监测'],intelligence:['竞品情报','主销与对标 · 商品观察 · 变化证据'],"ads-watch":['广告值守','广告组合与活动状态 · 时段合规'],upload:['上传中心','受控 Amazon 转交通道'],system:['系统保障','紫鸟、采集、证据与通知状态'],stores:['店铺配置','店铺接入与看板显示'],users:['用户管理','账户、角色与密码安全']};
   var CHECK_GROUPS={risk:['store-health','performance'],voice:['feedback','inbox','reviews','voc'],product:['asin-health','outlet'],ads:['ads-status']};
   var LABEL = {OK:'正常',WARN:'业务关注',CRITICAL:'业务异常',ERROR:'采集异常',NOT_CONFIGURED:'配置缺失',NOT_COVERED:'本批未覆盖',NEVER_RUN:'尚未运行',SKIPPED:'已跳过'};
   var CELL_LABEL = {OK:'正常',WARN:'业务关注',CRITICAL:'业务异常',ERROR:'采集异常',NOT_CONFIGURED:'配置缺失',NOT_COVERED:'未覆盖',NEVER_RUN:'未运行',SKIPPED:'跳过'};
@@ -388,6 +394,7 @@ ${ONBOARDING_MARKUP}
   function pageRows(key,rows){var size=PAGE_SIZE[key];var total=Math.max(1,Math.ceil(rows.length/size));pages[key]=Math.max(1,Math.min(pages[key]||1,total));return rows.slice((pages[key]-1)*size,pages[key]*size)}
   function renderPager(id,key,total){var el=q(id);if(!el)return;var size=PAGE_SIZE[key];var count=Math.max(1,Math.ceil(total/size));pages[key]=Math.max(1,Math.min(pages[key]||1,count));if(total<=size){el.innerHTML=total?'<span>共 '+total+' 条</span>':'';return}el.innerHTML='<button type="button" data-page-key="'+key+'" data-page-dir="-1" '+(pages[key]===1?'disabled':'')+'>上一页</button><b>'+pages[key]+' / '+count+'</b><button type="button" data-page-key="'+key+'" data-page-dir="1" '+(pages[key]===count?'disabled':'')+'>下一页</button><span>共 '+total+' 条</span>'}
   function activateView(name){
+    if(!uiReady)return;
     if(!VIEW_META[name])name='overview';
     if(activeView===name)return;
     activeView=name;
@@ -397,7 +404,7 @@ ${ONBOARDING_MARKUP}
     q('.sync').style.display=name==='intelligence'?'none':'';
     document.title=VIEW_META[name][0]+' · 店铺巡检';
     if(name==='intelligence')window.amzIntelligence.activate();else window.amzIntelligence.suspend();
-    if(name==='upload')loadUploads(uploadPage);if(name==='ads-watch')loadAdsRules();if(name==='users')loadUsers();
+    if(name==='upload')loadUploads(uploadPage);if(name==='ads-watch')loadAdsRules();if(name==='users')loadUsers();if(name==='stores')storeSettings.activate();
   }
 
   function renderHero(){
@@ -573,7 +580,7 @@ ${ONBOARDING_MARKUP}
     q('#uploadLimits').textContent='支持 '+uploadData.limits.extensions.join(' / ')+'；单文件上限 '+Math.floor(uploadData.limits.maxBytes/1024/1024)+' MB；暂存 '+uploadData.limits.stageExpiresMinutes+' 分钟内必须完成最终确认。';
     var current=q('#uploadStore').value;q('#uploadStore').innerHTML=(uploadData.stores||[]).map(function(s){return '<option value="'+esc(s.key)+'">'+esc(s.name)+' · '+esc(s.market)+'</option>'}).join('');if(current&&uploadData.stores.some(function(s){return s.key===current}))q('#uploadStore').value=current;
     var filter=q('#uploadStoreFilter'),filterValue=filter.value;filter.innerHTML='<option value="">全部店铺</option>'+(uploadData.stores||[]).map(function(s){return '<option value="'+esc(s.key)+'">'+esc(s.name)+'</option>'}).join('');if(filterValue&&(uploadData.stores||[]).some(function(s){return s.key===filterValue}))filter.value=filterValue;
-    if(!uploadData.enabled)showUploadMessage('商品上传当前按生产策略关闭；八项巡检与看板不受影响。完成安全扫描和紫鸟真机页面校准后才能开启。','neutral');else if(!uploadData.authorized)showUploadMessage('当前登录账号没有商品上传权限，请联系系统管理员。','neutral');else if(noStores)showUploadMessage('当前没有可用于上传的已启用店铺。','neutral');
+    if(!uploadData.enabled)showUploadMessage('商品上传当前按生产策略关闭；九项巡检与看板不受影响。完成安全扫描和紫鸟真机页面校准后才能开启。','neutral');else if(!uploadData.authorized)showUploadMessage('当前登录账号没有商品上传权限，请联系系统管理员。','neutral');else if(noStores)showUploadMessage('当前没有可用于上传的已启用店铺。','neutral');
     q('#uploadCorrupt').style.display=uploadData.corrupt>0?'inline-flex':'none';q('#uploadCorrupt').textContent=uploadData.corrupt+' 个账本异常';
   }
   function renderUploadHistory(){
@@ -582,7 +589,7 @@ ${ONBOARDING_MARKUP}
   }
   async function loadUploads(page){
     var history=q('#uploadHistory');history.setAttribute('aria-busy','true');var store=q('#uploadStoreFilter').value,state=q('#uploadStateFilter').value;
-    try{var r=await fetch('/api/product-uploads?page='+encodeURIComponent(page||1)+'&pageSize=10&store='+encodeURIComponent(store)+'&state='+encodeURIComponent(state),{cache:'no-store'});if(r.status===401){location.href='/login';return}var body=await r.json();if(!r.ok)throw new Error(body.error||('HTTP '+r.status));uploadData=body;uploadPage=body.pagination.page;renderUploadContext();renderUploadHistory()}
+    try{var r=await fetch('/api/product-uploads?page='+encodeURIComponent(page||1)+'&pageSize='+Math.min(displaySettings.listPageSize,50)+'&store='+encodeURIComponent(store)+'&state='+encodeURIComponent(state),{cache:'no-store'});if(r.status===401){location.href='/login';return}var body=await r.json();if(!r.ok)throw new Error(body.error||('HTTP '+r.status));uploadData=body;uploadPage=body.pagination.page;renderUploadContext();renderUploadHistory()}
     catch(e){showUploadMessage('上传工作区加载失败：'+e.message,'bad')}finally{history.removeAttribute('aria-busy')}
   }
   function showStagedUpload(job){
@@ -668,7 +675,7 @@ ${ONBOARDING_MARKUP}
 
   function render(){renderHero();renderKpis();renderReadiness();renderProgress();renderSystemProgress();renderSchedule('#scheduleList',false);renderSchedule('#adsScheduleList',true);renderGroupMatrix('risk','riskMatrix','riskMatrix');renderGroupMatrix('voice','voiceMatrix','voiceMatrix');renderGroupMatrix('product','productMatrix','productMatrix');renderGroupMatrix('ads','adsMatrix','adsMatrix');renderSessions();renderAsinInventory();renderMonitoringRecommendations();renderEvidenceCompleteness();renderIssueQueue({group:'risk',key:'riskIssues',prefix:'riskIssue'});renderIssueQueue({group:'voice',key:'voiceIssues',prefix:'voiceIssue'});renderIssueQueue({group:'product',key:'productIssues',prefix:'productIssue'});renderIssueQueue({group:'ads',key:'adsIssues',prefix:'adsIssue'});renderIssueQueue({key:'systemIssues',prefix:'systemIssue',collectionOnly:true});renderChecks();renderChannels();renderAlerts()}
   async function load(){
-    if(loading)return;loading=true;
+    if(loading||!uiReady)return;loading=true;
     q('#refresh').disabled=true;q('#refresh').setAttribute('aria-busy','true');
     try{var r=await fetch('/api/status',{cache:'no-store'});if(r.status===401){location.href='/login';return}if(!r.ok)throw new Error('服务暂时不可用（'+r.status+'）');var next=await r.json();if(!next||!Array.isArray(next.stores)||!Array.isArray(next.checks))throw new Error('返回数据格式不完整');if(data&&data.progress&&next.progress&&Date.parse(data.progress.updatedAt)>Date.parse(next.progress.updatedAt))next.progress=data.progress;data=next;q('#error').style.display='none';render();if(activeDetail&&q('#drawerBackdrop').classList.contains('open'))openDetail(activeDetail.storeKey,activeDetail.checkId,true)}
     catch(e){q('#error').textContent='看板数据加载失败：'+e.message+'。系统会继续自动重试。';q('#error').style.display='block'}
@@ -691,15 +698,24 @@ ${ONBOARDING_MARKUP}
   }
   function resetMatrix(group){var key=group+'Matrix';pages[key]=1;renderGroupMatrix(group,key,key)}
   function rerenderPage(key){if(key==='riskMatrix')renderGroupMatrix('risk','riskMatrix','riskMatrix');else if(key==='voiceMatrix')renderGroupMatrix('voice','voiceMatrix','voiceMatrix');else if(key==='productMatrix')renderGroupMatrix('product','productMatrix','productMatrix');else if(key==='adsMatrix')renderGroupMatrix('ads','adsMatrix','adsMatrix');else if(key==='riskIssues')renderIssueQueue({group:'risk',key:'riskIssues',prefix:'riskIssue'});else if(key==='voiceIssues')renderIssueQueue({group:'voice',key:'voiceIssues',prefix:'voiceIssue'});else if(key==='productIssues')renderIssueQueue({group:'product',key:'productIssues',prefix:'productIssue'});else if(key==='adsIssues')renderIssueQueue({group:'ads',key:'adsIssues',prefix:'adsIssue'});else if(key==='systemIssues')renderIssueQueue({key:'systemIssues',prefix:'systemIssue',collectionOnly:true});else if(key==='asins')renderAsinInventory();else if(key==='recommendations')renderMonitoringRecommendations();else if(key==='evidenceGaps')renderEvidenceCompleteness();else if(key==='alerts')renderAlerts();else if(key==='sessions')renderSessions()}
-  q('#refresh').addEventListener('click',function(){if(activeView==='intelligence')window.amzIntelligence.refresh();else load()});document.querySelectorAll('[data-matrix-filter]').forEach(function(control){var event=control.type==='search'?'input':'change';control.addEventListener(event,function(){resetMatrix(control.getAttribute('data-matrix-filter'))})});
+  q('#refresh').addEventListener('click',function(){if(!uiReady)return;if(activeView==='intelligence')window.amzIntelligence.refresh();else if(activeView==='stores')storeSettings.refresh();else load()});document.querySelectorAll('[data-matrix-filter]').forEach(function(control){var event=control.type==='search'?'input':'change';control.addEventListener(event,function(){resetMatrix(control.getAttribute('data-matrix-filter'))})});
   q('#drawerBody').addEventListener('click',function(e){var day=e.target.closest('[data-history-date]');if(day){loadHistoryDay(day.dataset.historyDate,day.dataset.historyRun||'',1);q('#historyDate').scrollIntoView({block:'nearest'});return}var page=e.target.closest('[data-history-page]');if(page&&!page.disabled&&historySelection)loadHistoryDay(historySelection.date,historySelection.runId,Number(page.dataset.historyPage))});
   q('#drawerBody').addEventListener('change',function(e){if(e.target.id==='historyDate'&&e.target.value)loadHistoryDay(e.target.value,'',1);if(e.target.id==='historyRun'&&historySelection)loadHistoryDay(historySelection.date,e.target.value,1)});
   q('#uploadForm').addEventListener('submit',stageUpload);q('#confirmForm').addEventListener('submit',confirmUpload);q('#adsRulesForm').addEventListener('submit',saveAdsRules);q('#createUserForm').addEventListener('submit',createUser);q('#ownPasswordForm').addEventListener('submit',changeOwnPassword);q('#userList').addEventListener('click',function(e){var button=e.target.closest('[data-user-action]');if(button)userAction(button)});q('#uploadStoreFilter').addEventListener('change',function(){loadUploads(1)});q('#uploadStateFilter').addEventListener('change',function(){loadUploads(1)});q('#cancelConfirm').addEventListener('click',function(){stagedUploadJob=null;q('#confirmPassword').value='';q('#confirmPhrase').value='';q('#confirmCard').classList.remove('open');showUploadMessage('任务仍处于待确认状态，30 分钟后自动过期；尚未访问 Amazon。','ok');if(uploadConfirmReturnFocus&&uploadConfirmReturnFocus.focus)uploadConfirmReturnFocus.focus()});
-  document.addEventListener('click',function(e){var pageButton=e.target.closest('[data-page-key]');if(pageButton&&!pageButton.disabled){var key=pageButton.getAttribute('data-page-key');pages[key]=(pages[key]||1)+Number(pageButton.getAttribute('data-page-dir')||0);rerenderPage(key)}var uploadButton=e.target.closest('[data-upload-page]');if(uploadButton&&!uploadButton.disabled)loadUploads(Number(uploadButton.getAttribute('data-upload-page'))||1);var continueButton=e.target.closest('[data-continue-upload]');if(continueButton&&uploadData){var job=uploadData.jobs.find(function(x){return x.id===continueButton.getAttribute('data-continue-upload')});if(job)showStagedUpload(job)}var viewLink=e.target.closest('[data-view]');if(viewLink)activateView(viewLink.getAttribute('data-view'))});window.addEventListener('hashchange',function(){activateView(location.hash.slice(1))});activateView(location.hash.slice(1)||'overview');
+  document.addEventListener('click',function(e){var pageButton=e.target.closest('[data-page-key]');if(pageButton&&!pageButton.disabled){var key=pageButton.getAttribute('data-page-key');pages[key]=(pages[key]||1)+Number(pageButton.getAttribute('data-page-dir')||0);rerenderPage(key)}var uploadButton=e.target.closest('[data-upload-page]');if(uploadButton&&!uploadButton.disabled)loadUploads(Number(uploadButton.getAttribute('data-upload-page'))||1);var continueButton=e.target.closest('[data-continue-upload]');if(continueButton&&uploadData){var job=uploadData.jobs.find(function(x){return x.id===continueButton.getAttribute('data-continue-upload')});if(job)showStagedUpload(job)}var viewLink=e.target.closest('[data-view]');if(viewLink)activateView(viewLink.getAttribute('data-view'))});window.addEventListener('hashchange',function(){activateView(location.hash.slice(1))});
   ['#riskMatrixBody','#voiceMatrixBody','#productMatrixBody','#adsMatrixBody','#riskIssueList','#voiceIssueList','#productIssueList','#adsIssueList','#systemIssueList'].forEach(function(selector){q(selector).addEventListener('click',function(e){var b=e.target.closest('[data-store][data-check]');if(b)openDetail(b.dataset.store,b.dataset.check)})});
   q('#closeDrawer').addEventListener('click',closeDetail);q('#drawerBackdrop').addEventListener('click',function(e){if(e.target===this)closeDetail()});document.addEventListener('keydown',function(e){var open=q('#drawerBackdrop').classList.contains('open');if(e.key==='Escape'&&open)closeDetail();if(e.key==='Tab'&&open){var nodes=q('#drawerBackdrop').querySelectorAll('button:not([disabled]),a[href],input,select');if(!nodes.length)return;var first=nodes[0],last=nodes[nodes.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}}});
   (${installOperatorTour.toString()})({window:window,document:document,lessons:${JSON.stringify(OPERATOR_LESSONS)},normalizeRecord:${normalizeTourRecord.toString()},activateView:activateView,readData:function(){return data},readUpload:function(){return uploadData}});
-  load();setInterval(load,30000);setInterval(loadProgress,2000);setInterval(function(){if(location.hash==='#upload')loadUploads(uploadPage)},15000);
+  function applyDisplaySettings(settings){
+    displaySettings=settings;uiReady=true;
+    Object.keys(pages).forEach(function(key){PAGE_SIZE[key]=/Matrix$/.test(key)?settings.matrixPageSize:settings.listPageSize});
+    q('#refreshCadence').textContent='进度每 '+settings.progressRefreshSeconds+' 秒 · 报告每 '+settings.reportRefreshSeconds+' 秒刷新'+String.fromCharCode(10)+'北京时间运行';
+    refreshTimers.forEach(function(timer){clearInterval(timer)});
+    refreshTimers=[setInterval(load,settings.reportRefreshSeconds*1000),setInterval(loadProgress,settings.progressRefreshSeconds*1000),setInterval(function(){if(activeView==='upload')loadUploads(uploadPage)},settings.uploadRefreshSeconds*1000)];
+    if(data)render();
+  }
+  var storeSettings=(${installStoreSettings.toString()})({window:window,document:document,settingsDefaults:${JSON.stringify(UI_DEFAULTS)},views:Object.keys(VIEW_META).map(function(id){return {id:id,title:VIEW_META[id][0]}}),onUiSettings:applyDisplaySettings,onStoresSaved:async function(){await Promise.all([load(),loadAdsRules(),loadUploads(uploadPage)])}});
+  storeSettings.loadUIConfig().then(function(){activateView(location.hash.slice(1)||storeSettings.getDefaultView());if(activeView==='stores')storeSettings.activate();load()});
 })();
 </script>
 </body>
