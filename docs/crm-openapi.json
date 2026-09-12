@@ -2,30 +2,32 @@
   "openapi": "3.1.1",
   "jsonSchemaDialect": "https://spec.openapis.org/oas/3.1/dialect/base",
   "info": {
-    "title": "AMZ Automation Console CRM Read API",
+    "title": "AMZ 店铺监测 CRM 只读 API",
     "version": "1.0",
-    "description": "Independent read-only CRM integration for nine store-monitoring checks. Static contract of the current implementation; not a claim that this revision is deployed. HTTPS and exact configured Host are required for every listed route. No CORS is enabled. This is opaque bearer plus browser-bound ticket/session authentication, not OAuth. Success JSON envelopes and application/problem+json errors are distinct. Credentials in query keys containing token, ticket, password, secret or authorization are rejected. Unknown/repeated query parameters are rejected. No route starts sampling or writes Amazon/CRM business data. Structured output uses explicit allowlists with rule-based text redaction, not arbitrary-prose personal-data classification."
+    "description": "向 CRM 提供九项店铺监测的结果摘要和已保存明细，不包含竞品情报。CRM 后端使用 Bearer Token 通过 HTTPS 取数；浏览器免密入口另用绑定浏览器的票据和会话。HTTP CRM 页面可使用 popup 模式。接入步骤见随附的 CRM_API.md。\n\n所有接口均要求 HTTPS，且 Host 必须与服务端配置完全一致；不开放 CORS。鉴权使用不透明 Bearer Token 和浏览器票据，不采用 OAuth。读 API 优先检查 Authorization 请求头：只要携带此头，就不会在鉴权失败后改用 Cookie。\n\n接口只读取已保存数据，不启动 Amazon 采样，也不写入 Amazon 或 CRM 业务数据。返回字段经过白名单筛选和规则脱敏；文本脱敏不代表能识别任意自由文本中的全部个人信息。\n\n成功 JSON 使用统一响应结构，错误使用 application/problem+json；HTML 页面、重定向和原始 OpenAPI 文件以各接口定义为准。未知或重复的查询参数会被拒绝；参数名包含 token、ticket、password、secret 或 authorization 也会被拒绝，不得在查询串中传递凭据。\n\n本文件描述代码实现的接口约定，不单独证明该版本已部署；当前服务能力请查询 GET /api/crm/v1。"
   },
   "servers": [
     {
       "url": "https://amzcheck.pc51.com",
-      "description": "CRM integration target. HTTPS and this configured canonical Host are required. Query /api/crm/v1 for the serving API capabilities; the checked-in contract alone does not establish which revision is deployed."
+      "description": "CRM 接入地址。所有请求须使用此 HTTPS 地址，并匹配服务端配置的 Host。当前可用能力以 GET /api/crm/v1 返回值为准。"
     }
   ],
   "tags": [
     {
-      "name": "Read API"
+      "name": "Read API",
+      "description": "CRM 后端读取授权店铺、九项监测摘要、历史批次和已保存明细。"
     },
     {
-      "name": "Browser SSO"
+      "name": "Browser SSO",
+      "description": "浏览器免密登录、票据兑换和只读门户；支持 redirect 与 popup，具体流程见 CRM_API.md。"
     }
   ],
   "paths": {
     "/api/crm/v1": {
       "get": {
         "operationId": "getCrmCapabilities",
-        "summary": "Get available capabilities",
-        "description": "Reads only saved nine-check data. Does not start collection, contact Amazon, send CRM updates or include competitive intelligence. An Authorization header, if present at all, takes precedence over the CRM session cookie; invalid headers do not fall back to cookies.",
+        "summary": "获取接口能力",
+        "description": "返回当前身份可访问的店铺、九项检查目录、数据类别、SSO 模式和有效期配置。接入时先查询此接口，再按返回的 storeKeys 和 checks 发起取数请求。仅反映当前服务能力，不触发采样。",
         "tags": [
           "Read API"
         ],
@@ -98,8 +100,8 @@
     "/api/crm/v1/openapi.json": {
       "get": {
         "operationId": "getCrmOpenApi",
-        "summary": "Get this machine contract",
-        "description": "Returns raw OpenAPI JSON under the same CRM authentication and HTTPS rules. No success envelope.",
+        "summary": "获取 OpenAPI 规范",
+        "description": "在 CRM 鉴权和 HTTPS 校验通过后，直接返回 OpenAPI JSON 文件，不包裹成功响应结构。可导入支持 OpenAPI 3.1 的开发工具。",
         "tags": [
           "Read API"
         ],
@@ -172,8 +174,8 @@
     "/api/crm/v1/stores": {
       "get": {
         "operationId": "listCrmStores",
-        "summary": "List authorized enabled stores",
-        "description": "Reads only saved nine-check data. Does not start collection, contact Amazon, send CRM updates or include competitive intelligence. An Authorization header, if present at all, takes precedence over the CRM session cookie; invalid headers do not fall back to cookies.",
+        "summary": "获取授权店铺列表",
+        "description": "仅返回当前身份有权访问且已启用的店铺。后续请求须使用返回的 storeKey，不应自行推测或固定店铺清单。",
         "tags": [
           "Read API"
         ],
@@ -246,8 +248,8 @@
     "/api/crm/v1/stores/{storeKey}/results": {
       "get": {
         "operationId": "getCrmStoreResults",
-        "summary": "Get nine-check result summaries",
-        "description": "Reads only saved nine-check data. Does not start collection, contact Amazon, send CRM updates or include competitive intelligence. An Authorization header, if present at all, takes precedence over the CRM session cookie; invalid headers do not fall back to cookies. Latest effective results are selected independently by store/check; targeted ASIN results retain their true original run. Any conflicting stored copy affecting this store fails the request.",
+        "summary": "获取店铺九项监测摘要",
+        "description": "按店铺和检查项分别选择最近的有效结果。单独补采的 ASIN 结果保留其真实来源批次，不会合成为一个新的批次。与该店铺有关的同批次报告存在冲突时，整个请求失败。",
         "tags": [
           "Read API"
         ],
@@ -330,8 +332,8 @@
     "/api/crm/v1/stores/{storeKey}/checks/{checkId}/runs": {
       "get": {
         "operationId": "listCrmCheckRuns",
-        "summary": "List stored runs for one store and check",
-        "description": "Reads only saved nine-check data. Does not start collection, contact Amazon, send CRM updates or include competitive intelligence. An Authorization header, if present at all, takes precedence over the CRM session cookie; invalid headers do not fall back to cookies. Run date filtering uses each result collection date in Beijing time. No query-based status or publication-date filter exists. Conflicting copies fail closed.",
+        "summary": "分页获取检查历史批次",
+        "description": "列出指定店铺、指定检查项的已保存批次。from 和 to 按每条结果的北京时间采集日期筛选，含起止日期；不支持按状态或评价发布日期筛选。相关报告副本冲突时拒绝返回结果。",
         "tags": [
           "Read API"
         ],
@@ -429,8 +431,8 @@
     "/api/crm/v1/stores/{storeKey}/checks/{checkId}/data": {
       "get": {
         "operationId": "getCrmCheckData",
-        "summary": "Page through saved safe business records",
-        "description": "Reads only saved nine-check data. Does not start collection, contact Amazon, send CRM updates or include competitive intelligence. An Authorization header, if present at all, takes precedence over the CRM session cookie; invalid headers do not fall back to cookies. runId is required. All valid saved, allowlisted records are available by pagination, including all saved VOC child records; this does not assert complete Amazon collection. Fix snapshotId across pages to detect replacement. Conflicting same-ID files return 409 rather than selecting a copy. Inbox exposes result summaries only.",
+        "summary": "分页获取批次完整数据",
+        "description": "runId 必填，应先从 runs 接口选择批次。通过分页可读取该批次全部有效且符合字段白名单的已保存记录，包括 VOC 子记录；这不代表已采全 Amazon 数据。Inbox 只返回结果摘要，不返回消息记录。翻页时固定使用同一 snapshotId，以检测报告是否被替换；同一 runId 的报告副本冲突时返回 409，不会自行选取其中一份。",
         "tags": [
           "Read API"
         ],
@@ -528,8 +530,8 @@
     "/crm/sso/start": {
       "get": {
         "operationId": "beginCrmBrowserSso",
-        "summary": "Start browser-bound CRM login",
-        "description": "No existing credential is required. Creates a 120-second browser challenge and binding cookie, then redirects to a fixed configured CRM callback. The CRM must authenticate its subject and authorize the requested store before its backend issues a ticket. Never accept a caller-supplied callback URL.",
+        "summary": "发起重定向免密登录",
+        "description": "无需已有凭据。创建有效期为 120 秒的浏览器挑战和绑定 Cookie，再重定向到服务端固定配置的 CRM 回调地址。CRM 后端签票前必须确认当前用户身份及目标店铺权限。此接口不接受调用方指定回调地址。",
         "tags": [
           "Browser SSO"
         ],
@@ -616,8 +618,8 @@
     "/crm/sso/bridge": {
       "get": {
         "operationId": "beginCrmPopupSso",
-        "summary": "Open a browser-bound monitor popup from the CRM SPA",
-        "description": "Register the message listener before opening the popup synchronously from the CRM button; the bridge sends its challenge once. Creates a 120-second challenge and Secure HttpOnly binding cookie, then serves an HTML postMessage bridge to the one configured CRM origin. The configured CRM origin may use HTTP; the monitor remains HTTPS. Both windows check exact origin, window source, requestId and challengeId. The CRM backend independently authenticates its current user and store rights before signing. No CRM login token or monitor API token is sent through postMessage. Requires AMZGUARD_CRM_BRIDGE_ORIGIN; does not require the redirect callback. Shares the start rate limit with /crm/sso/start.",
+        "summary": "打开免密登录 popup",
+        "description": "适用于通过弹窗接入的 CRM 页面，包括 HTTP CRM；监测服务始终使用 HTTPS。CRM 页面须先注册消息监听，再在按钮点击处理中同步打开弹窗，挑战消息只发送一次。\n\n接口创建有效期为 120 秒的挑战和 Secure、HttpOnly 绑定 Cookie，返回 HTML 页面，通过 postMessage 与唯一配置的 CRM origin 通信。两端都须校验精确 origin、窗口来源、requestId 和 challengeId。CRM 后端签票前须独立确认当前用户身份及店铺权限；postMessage 不传 CRM 登录 Token 或监测 API Token。\n\n须配置 AMZGUARD_CRM_BRIDGE_ORIGIN，无需配置重定向回调。与 /crm/sso/start 共用每分钟 10 次的启动限额。消息协议和接入顺序见 CRM_API.md。",
         "tags": [
           "Browser SSO"
         ],
@@ -650,7 +652,7 @@
             "name": "requestId",
             "in": "query",
             "required": true,
-            "description": "Fresh 32-byte base64url correlation value generated by the CRM page; not an identity or credential.",
+            "description": "CRM 页面为本次弹窗新生成的 32 字节 base64url 随机值，用于关联消息；不是身份或凭据。",
             "schema": {
               "type": "string",
               "pattern": "^[A-Za-z0-9_-]{43}$",
@@ -720,8 +722,8 @@
     "/api/crm/v1/sso/tickets": {
       "post": {
         "operationId": "issueCrmBrowserTicket",
-        "summary": "Issue a single-use browser ticket",
-        "description": "CRM backend only. Bearer authentication is mandatory; a browser session cannot issue tickets. challengeId and all destination fields must match the browser challenge. One challenge permits one issued ticket. Ticket expires after at most 60 seconds and no later than its challenge. No caller-selected redirect is accepted.",
+        "summary": "签发一次性登录票据",
+        "description": "仅供 CRM 后端调用，必须使用 Bearer Token；浏览器会话不能签票。CRM 后端须先确认当前用户身份及店铺权限。challengeId、storeKey、view 和 checkId 须与浏览器挑战一致，每个挑战只能签发一张票据。票据最多有效 60 秒，且不会晚于挑战到期。目标地址由服务端生成，不接受调用方指定跳转地址。",
         "tags": [
           "Browser SSO"
         ],
@@ -812,8 +814,8 @@
     "/crm/sso": {
       "get": {
         "operationId": "getCrmSsoCompletion",
-        "summary": "Load ticket exchange page",
-        "description": "Loads HTML that reads the ticket from the URL fragment and POSTs JSON to /crm/sso/exchange. URL fragments are not HTTP query parameters. Every query parameter is rejected. No ticket or binding cookie is returned in HTML.",
+        "summary": "加载票据兑换页面",
+        "description": "返回 HTML 页面，从 URL fragment 读取 ticket，再以 JSON 请求同源的 /crm/sso/exchange。fragment 不属于 HTTP 查询参数；此页面拒绝所有查询参数。HTML 中不包含票据或浏览器绑定 Cookie。",
         "tags": [
           "Browser SSO"
         ],
@@ -873,8 +875,8 @@
     "/crm/sso/exchange": {
       "post": {
         "operationId": "exchangeCrmBrowserTicket",
-        "summary": "Exchange a browser-bound ticket",
-        "description": "Requires the independent binding cookie created by sso/start, a valid single-use ticket in JSON, and exact same-origin headers. Consumes the ticket synchronously and creates a 30-minute CRM-only, single-store session. Clears the binding cookie. Tickets/sessions are in process memory; restart or CRM configuration change invalidates them.",
+        "summary": "兑换票据并建立浏览器会话",
+        "description": "须携带由 /crm/sso/start 或 /crm/sso/bridge 设置的独立绑定 Cookie、JSON 中的有效一次性票据，以及符合要求的同源请求头。校验成功后同步消费票据、清除绑定 Cookie，并建立有效期为 30 分钟的 CRM 专用单店会话。票据和会话保存在进程内存中，服务重启或 CRM 配置变化后失效。",
         "tags": [
           "Browser SSO"
         ],
@@ -972,8 +974,8 @@
     "/crm/logout": {
       "post": {
         "operationId": "logoutCrmBrowser",
-        "summary": "End local CRM browser session",
-        "description": "Requires same-origin JSON {}. Missing, expired or invalid session tokens still produce loggedOut=true. Clears only the CRM cookie and local CRM session; does not change Dashboard accounts or sessions.",
+        "summary": "退出 CRM 只读门户",
+        "description": "以同源请求提交 JSON 空对象 {}。只清除 CRM Cookie 和本地 CRM 会话，不改变 Dashboard 账号或会话。即使会话缺失、过期或无效，也返回 loggedOut=true。",
         "tags": [
           "Browser SSO"
         ],
@@ -1068,8 +1070,8 @@
     "/crm": {
       "get": {
         "operationId": "getCrmPortalWithoutSlash",
-        "summary": "Load CRM read-only portal",
-        "description": "Requires the dedicated CRM session cookie; Dashboard cookies and bearer headers do not authorize this page. No query parameters.",
+        "summary": "打开 CRM 只读门户",
+        "description": "须持有 CRM 专用会话 Cookie。Dashboard Cookie 和 Bearer 请求头不能授权访问此页面；不接受查询参数。",
         "tags": [
           "Browser SSO"
         ],
@@ -1139,8 +1141,8 @@
     "/crm/": {
       "get": {
         "operationId": "getCrmPortal",
-        "summary": "Load CRM read-only portal",
-        "description": "Requires the dedicated CRM session cookie; Dashboard cookies and bearer headers do not authorize this page. No query parameters.",
+        "summary": "打开 CRM 只读门户",
+        "description": "须持有 CRM 专用会话 Cookie。Dashboard Cookie 和 Bearer 请求头不能授权访问此页面；不接受查询参数。",
         "tags": [
           "Browser SSO"
         ],
@@ -1210,8 +1212,8 @@
     "/crm/session": {
       "get": {
         "operationId": "getCrmBrowserSession",
-        "summary": "Get current browser scope",
-        "description": "Requires the dedicated CRM cookie and exposes only store/check/view navigation, expiry and readOnly. Subject, client credentials and Dashboard roles are not returned.",
+        "summary": "获取当前浏览器会话范围",
+        "description": "须持有 CRM 专用会话 Cookie。仅返回店铺、检查项和视图导航信息、到期时间及 readOnly，不返回 CRM 用户标识 subject、客户端凭据或 Dashboard 角色。",
         "tags": [
           "Browser SSO"
         ],
@@ -4421,7 +4423,7 @@
         "schema": {
           "$ref": "#/components/schemas/StoreKey"
         },
-        "description": "Exact enabled store key available to the current CRM principal. Unknown or out-of-scope data resources return 404."
+        "description": "当前 CRM 身份有权访问的已启用店铺标识，须与店铺列表返回值完全一致。数据资源不存在或超出授权范围时返回 404。"
       },
       "CheckId": {
         "name": "checkId",
@@ -4430,7 +4432,7 @@
         "schema": {
           "$ref": "#/components/schemas/CheckId"
         },
-        "description": "One of the nine monitoring checks; competitive intelligence is not included."
+        "description": "九项店铺监测之一，取值见枚举；不包含竞品情报。"
       },
       "Page": {
         "name": "page",
@@ -4441,7 +4443,7 @@
           "maximum": 1000000,
           "default": 1
         },
-        "description": "Decimal digits only, matching ^[1-9]\\d*$. No leading zero, sign, exponent, whitespace or repeated parameter."
+        "description": "页码，只接受以 1–9 开头的十进制数字串，不接受前导零、正负号、指数、空白或重复参数。"
       },
       "PageSize": {
         "name": "pageSize",
@@ -4452,7 +4454,7 @@
           "maximum": 200,
           "default": 100
         },
-        "description": "Decimal digits only, matching ^[1-9]\\d*$. Values above 200 are rejected, not clamped."
+        "description": "每页条数，只接受以 1–9 开头的十进制数字串。默认 100，最多 200；超限时拒绝请求，不会自动缩小。"
       },
       "From": {
         "name": "from",
@@ -4460,7 +4462,7 @@
         "schema": {
           "$ref": "#/components/schemas/Date"
         },
-        "description": "Inclusive start of each result collection date in Asia/Shanghai. Must be a real calendar date; from must not exceed to. This does not filter review publication dates."
+        "description": "起始采集日期，按每条结果的 Asia/Shanghai 日期判断，包含当天。须为有效日历日期，且不能晚于 to；不用于筛选评价发布日期。"
       },
       "To": {
         "name": "to",
@@ -4468,7 +4470,7 @@
         "schema": {
           "$ref": "#/components/schemas/Date"
         },
-        "description": "Inclusive end of each result collection date in Asia/Shanghai; must be a real calendar date."
+        "description": "结束采集日期，按每条结果的 Asia/Shanghai 日期判断，包含当天；须为有效日历日期。"
       },
       "RunId": {
         "name": "runId",
@@ -4480,7 +4482,7 @@
           "maxLength": 300,
           "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
         },
-        "description": "Use the exact runId from runs; it must resolve to a saved report. The request parser accepts non-control text, but no invented latest aggregate is available."
+        "description": "使用 runs 接口返回的原始 runId，且必须对应已保存报告。解析器允许不含控制字符的文本。没有自动聚合最新结果的特殊 runId，须使用实际保存批次的标识。"
       },
       "SnapshotId": {
         "name": "snapshotId",
@@ -4488,7 +4490,7 @@
         "schema": {
           "$ref": "#/components/schemas/SnapshotId"
         },
-        "description": "Recommended on every page after selection. Mismatch returns 409 SNAPSHOT_CHANGED; without it a replaced report can be read under the same runId. Conflicting simultaneous copies always fail with REPORT_CONFLICT, even with snapshotId."
+        "description": "建议选定批次后在每一页携带同一值。不匹配时返回 409 SNAPSHOT_CHANGED；不传时，同一 runId 下被替换的报告可能被继续读取。同时存在内容冲突的副本时，无论是否携带此参数，均返回 REPORT_CONFLICT。"
       },
       "Origin": {
         "name": "Origin",
@@ -4498,7 +4500,7 @@
           "type": "string",
           "format": "uri"
         },
-        "description": "Must exactly equal the configured HTTPS public origin."
+        "description": "必须与服务端配置的 HTTPS public origin 完全一致。"
       },
       "SecFetchSite": {
         "name": "Sec-Fetch-Site",
@@ -4510,7 +4512,7 @@
             ""
           ]
         },
-        "description": "May be absent or empty; when nonempty, must be same-origin."
+        "description": "可省略或为空；非空时只能为 same-origin。"
       }
     },
     "headers": {
