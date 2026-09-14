@@ -123,8 +123,9 @@ function isBusinessEvidence(dom, txt) {
 // value, OTP, account identifier or page text crosses the WebDriver/CLI
 // boundary. The counters let operators distinguish a traversal budget from an
 // unreadable visible frame without weakening the fail-closed decision.
-export const POST_SCREENSHOT_SAFETY_EXTRACTOR = [
-  'var roots=[document],seen=[],traversalComplete=true,accessibleTraversalComplete=true,mainDocumentTraversalComplete=true,discoveredElements=0,scannedElements=0,elementBudget=50000,rootBudget=512,nodeBudget=5000,unreadableFrameBudget=8,traversalErrorCount=0,nonFrameTraversalErrorCount=0,unreadableFrameErrorCount=0,visibleFrameCount=0,unreadableVisibleFrameCount=0,opaqueOverlayFrameCount=0,opaqueAuthHintCount=0,opaqueBlockedHintCount=0,rootBudgetExceeded=false,elementBudgetExceeded=false,nodeBudgetExceeded=false,unreadableFrameBudgetExceeded=false;',
+function buildLiveSafetyExtractor(rootBudget) {
+  return [
+  'var roots=[document],seen=[],traversalComplete=true,accessibleTraversalComplete=true,mainDocumentTraversalComplete=true,discoveredElements=0,scannedElements=0,elementBudget=50000,rootBudget=' + rootBudget + ',nodeBudget=5000,unreadableFrameBudget=8,traversalErrorCount=0,nonFrameTraversalErrorCount=0,unreadableFrameErrorCount=0,visibleFrameCount=0,unreadableVisibleFrameCount=0,opaqueOverlayFrameCount=0,opaqueAuthHintCount=0,opaqueBlockedHintCount=0,rootBudgetExceeded=false,elementBudgetExceeded=false,nodeBudgetExceeded=false,unreadableFrameBudgetExceeded=false;',
   'var nonFrameError=function(){traversalComplete=false;accessibleTraversalComplete=false;traversalErrorCount++;nonFrameTraversalErrorCount++;};',
   'var frameVisible=function(el){try{if(el.hidden===true)return false;var st=el.style||null;if(st){var d=String(st.display||"").toLowerCase(),v=String(st.visibility||"").toLowerCase(),o=String(st.opacity||"");if(d==="none"||v==="hidden"||v==="collapse"||(o!==""&&Number(o)===0))return false;}var owner=el.ownerDocument||document,varView=owner&&owner.defaultView,cs=varView&&typeof varView.getComputedStyle==="function"?varView.getComputedStyle(el):null;if(cs){var cd=String(cs.display||"").toLowerCase(),cv=String(cs.visibility||"").toLowerCase(),co=String(cs.opacity||"");if(cd==="none"||cv==="hidden"||cv==="collapse"||(co!==""&&Number(co)===0))return false;}if(typeof el.getClientRects==="function"){var rects=el.getClientRects();if(!rects||rects.length===0)return false;}if(typeof el.getBoundingClientRect==="function"){var rect=el.getBoundingClientRect();if(rect&&(Number(rect.width)<=0||Number(rect.height)<=0))return false;}return true;}catch(e){nonFrameError();return true;}};',
   'var frameRisk=function(el){try{var attrs=["id","name","title","aria-label","src"],meta="",ai;for(ai=0;ai<attrs.length;ai++){meta+=" "+String((el.getAttribute&&el.getAttribute(attrs[ai]))||"");}if(/(?:^|[^a-z0-9])(?:auth(?:entication)?|oauth|openid|login|sign[\\s_-]*in|passkey|webauthn|mfa|otp|verification)(?:[^a-z0-9]|$)|(?:\\u767b\\u5f55|\\u9a8c\\u8bc1\\u7801)/i.test(meta))opaqueAuthHintCount++;if(/(?:^|[^a-z0-9])(?:captcha|robot[\\s_-]*check|automated[\\s_-]*access|blocked)(?:[^a-z0-9]|$)|(?:\\u9a8c\\u8bc1\\u7801)/i.test(meta))opaqueBlockedHintCount++;var rect=typeof el.getBoundingClientRect==="function"?el.getBoundingClientRect():null,owner=el.ownerDocument||document,view=owner&&owner.defaultView,vw=Number(view&&view.innerWidth)||Number(owner&&owner.documentElement&&owner.documentElement.clientWidth)||0,vh=Number(view&&view.innerHeight)||Number(owner&&owner.documentElement&&owner.documentElement.clientHeight)||0,overlay=false,cur=el,depth=0;while(cur&&depth<8){var role=String((cur.getAttribute&&cur.getAttribute("role"))||"").toLowerCase(),modal=String((cur.getAttribute&&cur.getAttribute("aria-modal"))||"").toLowerCase(),cn=String((cur.getAttribute&&(cur.getAttribute("class")||cur.getAttribute("id")))||"").toLowerCase();if(role==="dialog"||modal==="true"||/(?:modal|dialog|overlay)/.test(cn)){overlay=true;break;}cur=cur.parentElement;depth++;}if(!rect||vw<=0||vh<=0){overlay=true;}else{var rw=Math.max(0,Number(rect.width)||0),rh=Math.max(0,Number(rect.height)||0),cs=view&&typeof view.getComputedStyle==="function"?view.getComputedStyle(el):null,pos=String((cs&&cs.position)||(el.style&&el.style.position)||"").toLowerCase();if((rw>=vw*0.75&&rh>=vh*0.75)||(pos==="fixed"&&rw>=vw*0.5&&rh>=vh*0.5))overlay=true;}if(overlay)opaqueOverlayFrameCount++;}catch(e){nonFrameError();opaqueOverlayFrameCount++;}};',
@@ -139,7 +140,14 @@ export const POST_SCREENSHOT_SAFETY_EXTRACTOR = [
   ' if(/(?:\\u4f7f\\u7528(?:(?:\\u901a\\u884c)?\\u5bc6\\u94a5|passkey)\\u767b\\u5f55|\\u63a5(?:\\u53d7|\\u6536)\\u9a8c\\u8bc1\\u7801|\\u4e24\\u6b65\\u9a8c\\u8bc1|\\u9a8c\\u8bc1\\u7801)/i.test(t)){auth=true;}',
   '}',
   'return {probeVersion:2,looksLikeLogin:auth===true,looksBlocked:blocked===true,liveDocument:!!document.documentElement,traversalComplete:traversalComplete===true,accessibleTraversalComplete:accessibleTraversalComplete===true,mainDocumentTraversalComplete:mainDocumentTraversalComplete===true,discoveredRootCount:roots.length,scannedRootCount:seen.length,discoveredElementCount:discoveredElements,scannedElementCount:scannedElements,candidateNodeCount:nodes.length,visibleFrameCount:visibleFrameCount,unreadableVisibleFrameCount:unreadableVisibleFrameCount,traversalErrorCount:traversalErrorCount,nonFrameTraversalErrorCount:nonFrameTraversalErrorCount,unreadableFrameErrorCount:unreadableFrameErrorCount,opaqueOverlayFrameCount:opaqueOverlayFrameCount,opaqueAuthHintCount:opaqueAuthHintCount,opaqueBlockedHintCount:opaqueBlockedHintCount,rootBudget:rootBudget,elementBudget:elementBudget,nodeBudget:nodeBudget,unreadableFrameBudget:unreadableFrameBudget,rootBudgetExceeded:rootBudgetExceeded===true,elementBudgetExceeded:elementBudgetExceeded===true,nodeBudgetExceeded:nodeBudgetExceeded===true,unreadableFrameBudgetExceeded:unreadableFrameBudgetExceeded===true};',
-].join('\n');
+  ].join('\n');
+}
+
+export const POST_SCREENSHOT_SAFETY_EXTRACTOR = buildLiveSafetyExtractor(512);
+// The bulk-upload preview uses a larger component tree. Only this exact entry
+// gets a higher root limit; every root must still be traversed successfully.
+const PRODUCT_BULK_SAFETY_URL = 'https://sellercentral.amazon.com/product-search/bulk';
+const PRODUCT_BULK_SAFETY_EXTRACTOR = buildLiveSafetyExtractor(2048);
 
 const LIVE_PROBE_COUNT_FIELDS = Object.freeze([
   'discoveredRootCount', 'scannedRootCount', 'discoveredElementCount', 'scannedElementCount', 'candidateNodeCount',
@@ -310,7 +318,9 @@ async function classifyLivePageSafetyWithPolicy({
   }
   let live = null;
   try {
-    live = (await zn.execExtract(storeId, POST_SCREENSHOT_SAFETY_EXTRACTOR, {
+    const extractor = currentUrl === PRODUCT_BULK_SAFETY_URL && approvedAmazonUrl(currentUrl)
+      ? PRODUCT_BULK_SAFETY_EXTRACTOR : POST_SCREENSHOT_SAFETY_EXTRACTOR;
+    live = (await zn.execExtract(storeId, extractor, {
       timeoutMs: 10000, varName: '__ZN_POST_SCREENSHOT_SAFETY__',
     }))?.result || null;
   } catch { /* fail closed below */ }

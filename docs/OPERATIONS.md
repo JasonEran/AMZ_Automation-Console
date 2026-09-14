@@ -19,8 +19,8 @@
 | `amzguard-retention.timer` | 证据保留与权限修正 | 每日 03:10，带随机延迟 |
 | `amzguard-cert-renew.timer` | IP TLS 证书续期检查 | 每日两次，带随机延迟 |
 | `amzguard-product-upload.path` | 发现已确认上传任务 | 双闸开启时 enabled/active；默认关闭 |
-| `amzguard-product-upload.timer` | 上传队列一分钟兜底 | 双闸开启时 enabled/active；默认关闭 |
-| `amzguard-product-upload.service` | 独立安全扫描与对应紫鸟提交 | 由 path/timer 触发，不常驻 |
+| `amzguard-product-upload.timer` | 每分钟检查上传队列及待采集的批次结果 | 双闸开启时 enabled/active；默认关闭 |
+| `amzguard-product-upload.service` | 优先执行已授权上传；队列为空时读取一个批次结果 | 由 path/timer 触发，不常驻 |
 | `amzguard-manual@.service` | 单店/单项或单店/批次补跑 | 手动，不启用 |
 | `amzguard-channel-test.service` | 明确标记的通知测试；CRM 仅 dry-run | 手动，不启用 |
 
@@ -50,7 +50,57 @@ systemctl show amzguard-product-upload.service -p ActiveState -p Result -p ExecM
 journalctl -u amzguard-product-upload.service -n 80 --no-pager -o short-iso
 ```
 
-`COMPLETED` 仅表示 Amazon 上传端明确接收文件，最终商品处理仍以 Seller Central 处理报告为准；`UNKNOWN` 表示越过提交边界后无法确认，禁止重启或手工补队列，必须由运营在对应店铺人工核对。
+#### 上传接收与商品处理
+
+上传任务的 `COMPLETED` 表示 Amazon 已接收文件，商品是否处理成功另看“商品处理结果”和原报告。越过提交边界后无法确认时，任务为 `UNKNOWN`：禁止靠重启、补队列或重复上传排查，先由运营到对应店铺人工核对。同店同文件摘要的未知任务会阻止再次暂存，程序不会自动解除保护。待确认文件超过 30 分钟须重新暂存。
+
+工作者支持“验证您的文件 → 预览 → 提交”的页面流程；Amazon 要求时按页面执行“带错误提交”。提交准备最多等待 120 秒，各步骤仅点击一次，不编辑单元格、修复或筛选商品。按钮不唯一、页面变化或响应丢失时停止。首次预览若被新手导览遮挡，仅在没有业务确认弹窗时用 Escape 关闭一次，再检查预览、地址与页面安全状态；遮罩仍在、再次出现或预览关闭时停止。
+
+接收回执须有明确提交结果文字。若 Amazon 直接跳到状态页，则须同时核对返回批次、文件名和该批次高亮记录；仅看到状态页或旧记录不算接收成功。这种回执保留批次 ID，并标记 `receipt.evidence=UPLOAD_STATUS_ROW`，后续结果采集不改写回执。
+
+只有回执为 `ACCEPTED` 且有明确批次号的任务，才会通过原店铺紫鸟只读访问 `/product-search/bulk/status`，核对批次、文件、状态和数量，再获取该批次报告。上传中心的“获取最新处理结果”仅安排一次只读采集；普通页面刷新只显示服务器已保存的数据。原任务状态、回执和重置记录保持不变，采集时间及最近一次采集失败单独展示。
+
+数量只采用 Amazon 明确提供的数据。状态页仅给出“成功 / 提交”时，失败和警告显示“—”，不能补零。只有**本次采集的报告**含明确汇总，且提交数、成功数与状态页一致，才补充失败、警告及错误总数，并标注“处理报告汇总”；数量冲突时显示 `UNKNOWN`。未识别状态、统计缺失、空批次或无法核对的分段均不算成功，多分段数量也不擅自相加。逐 SKU 问题在原报告中查看。
+
+#### 结果采集配置
+
+配置位于 `config/config.json` 的 `productUpload.results`：
+
+| 参数 | 默认值 | 有效范围 / 含义 |
+|---|---|---|
+| `enabled` | `true` | 是否启用结果采集 |
+| `intervalMinutes` | `5` | 1–60 分钟，自动采集的最小间隔 |
+| `maxAgeHours` | `72` | 1–168 小时，从文件接收时间起算 |
+| `timeoutMs` | `120000` | 10000–180000 毫秒，结果读取超时 |
+
+非法配置会停止结果采集，不静默回退。修改后重启 Dashboard，工作者在下一次启动时读取配置。取得终态或超过时间窗口后停止自动采集，仍可点击“获取最新处理结果”重新查询。
+
+工作者优先处理已授权上传，队列为空时每次最多读取一个批次。它与巡检、上传共用运行锁，所以配置间隔不保证准点；手动请求遇到占锁须稍后再试。上传总开关关闭时不采集。写执行闸关闭时，工作者仍可只读获取结果，但安装脚本仍按双闸规则启停 path/timer，不会因此自动开启调度。
+
+#### 报告下载与保留
+
+报告只从同一批次已核实的下载入口，通过对应紫鸟会话发起同源 GET。当前只支持唯一分段中已有的唯一“处理一览”下载操作；其他结构保留为待获取，不调用生成、修复或再次提交操作。
+
+`GET /api/product-uploads/report?jobId=<任务ID>` 仅供当前已登录的上传管理员下载，CRM Token 无权访问。XLSM 报告保留原格式和字节，但仍检查文件规模，并拒绝实际含有 VBA、ActiveX 或嵌入对象的文件；系统不执行工作簿内容。
+
+采集状态保存在任务私有目录的 `processing/current.json`，报告保存在 `processing/reports/`，不通过通用截图接口公开。报告默认保留 45 天，每批仅留当前附件，过期后可重新获取。本次下载失败时保留已有报告，并显示原采集时间；旧报告不会替代本次状态页数量。
+
+#### 重置重复上传
+
+确需重新上传时，已登录的上传管理员可在已终止任务上点击“重置重复上传”，无需再次输入密码、短语或原因。系统仍校验角色、同源/CSRF、任务绑定和运行锁，并记录操作人、时间与原任务。运行中任务、队列标记未清理、账本异常或运行锁被占用时不能重置。
+
+重置只解除这条旧任务的重复拦截，不提交文件，也不证明 Amazon 未收到旧文件。旧状态、结果和重置记录保留，可勾选“显示已重置记录”查看；`record.json` 和 `reset.json` 长期保留。随后重新选择文件并暂存，新任务仍须核对店铺、文件并输入提交短语，使用当前登录会话即可。重置后的 `UNKNOWN` 仍阻止改绑或停用店铺。
+
+#### 上传失败排查
+
+`UPLOAD_SUBMIT_CONTROL_NOT_READY` 表示选文件后未等到可点击的提交控件。新任务的错误详情记录最后一轮控件数、白名单标签数，以及不可见、禁用、读取异常数量。这些统计不能证明 Amazon 已接收或拒绝文件；先核对文件校验提示和页面必填项，不强行启用按钮或重复上传。旧任务缺少的失败现场不能事后补造。
+
+工作者会在关闭店铺浏览器前，尝试将现场保存到 `out/product-uploads/jobs/<任务 ID>/diagnostics/`：
+
+- `current.json`：文件选择数量、大小是否匹配及校验状态。Amazon 接收文件后可能清空原生控件，因此数量为零不能单独证明未选中文件。
+- `current.png`：当时的可见页面。只有精确上传地址及完整页面安全检查通过才截图；未通过时只在 JSON 中保留检查阶段、原因码和遍历计数，不补造文件选择状态。
+
+现场采集最多等待 15 秒，失败或超时不改变任务结论。诊断文件仅供服务器排障，不通过 Dashboard、CRM API 或通知公开，默认保留 45 天。截图可能含商品信息，不应写入文档或公开分享，也不能当作 Amazon 接收回执。
 
 ### 2. 最近一次任务结果
 
@@ -257,7 +307,7 @@ Dashboard“系统保障”页的“紫鸟会话中心”会把登录流程受�
 
 ## 保留策略与容量
 
-默认策略按文件 mtime 计算：页面证据 45 天、报告 365 天、应用日志 60 天、`alerts/`、`channels/` 与上传任务/审计 365 天，上传 payload 7 天；Nginx 日志沿用 Ubuntu 的系统轮转策略。`state/`、CRM 幂等账本 `channels/crm/ledger.json`、`runtime/` 下的 `ads-monitoring.json/ads-rules.json/users.json/store-registry.json/ui-config.json` 与各级 `latest.json` 不按期限删除。先 dry-run：
+默认策略按文件 mtime 计算：页面证据 45 天、报告 365 天、应用日志 60 天、`alerts/`、`channels/` 与上传审计 365 天，上传 payload 7 天；Nginx 日志沿用 Ubuntu 的系统轮转策略。合法上传任务目录中的 `record.json` 与 `reset.json` 长期保留，维护原任务与人工重置的关联；清理原文件不会清除重复保护。`state/`、CRM 幂等账本 `channels/crm/ledger.json`、`runtime/` 下的 `ads-monitoring.json/ads-rules.json/users.json/store-registry.json/ui-config.json` 与各级 `latest.json` 不按期限删除。先 dry-run：
 
 ```bash
 cd /opt/amzguard

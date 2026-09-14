@@ -701,6 +701,111 @@ test('live safety probe reaches the 3001st shadow host and fails closed only bey
   assert.equal(authStillWins.liveProbeDiagnostics.rootBudgetExceeded, true);
 });
 
+function shadowRootSafetyDocument(rootCount, tailRisk = null) {
+  let root = {
+    querySelector(selector) {
+      if (tailRisk === 'auth' && selector.includes('input[type=password]')) return { hidden: true };
+      if (tailRisk === 'blocked' && selector.includes('#captchacharacters')) return { hidden: true };
+      return null;
+    },
+    querySelectorAll() { return []; },
+  };
+  for (let index = 1; index < rootCount; index++) {
+    const host = { shadowRoot: root };
+    root = {
+      querySelector() { return null; },
+      querySelectorAll(selector) { return selector === '*' ? [host] : []; },
+    };
+  }
+  root.documentElement = {};
+  return root;
+}
+
+async function classifyShadowRootSafety(url, rootCount, { tailRisk = null, afterUrl = url } = {}) {
+  const document = shadowRootSafetyDocument(rootCount, tailRisk);
+  let source = null;
+  let urlReads = 0;
+  const safety = await classifyLivePageSafety({
+    storeId: 'opaque',
+    zn: {
+      async currentUrl() { return urlReads++ === 0 ? url : afterUrl; },
+      async execExtract(_storeId, script) {
+        source = script;
+        return { result: new Function('document', script)(document) };
+      },
+    },
+  });
+  return { safety, source };
+}
+
+test('exact bulk-upload live gate completely scans up to 2048 roots and still rejects overflow or URL changes', async () => {
+  const bulk = 'https://sellercentral.amazon.com/product-search/bulk';
+  for (const rootCount of [513, 2048, 2049]) {
+    const { safety, source } = await classifyShadowRootSafety(bulk, rootCount);
+    assert.equal(safety.safe, rootCount <= 2048);
+    assert.equal(safety.code, rootCount <= 2048 ? 'LIVE_PAGE_NON_SENSITIVE' : 'LIVE_SAFETY_PROBE_INCOMPLETE');
+    const diagnostics = safety.liveProbeDiagnostics;
+    assert.equal(diagnostics.discoveredRootCount, rootCount);
+    assert.equal(diagnostics.scannedRootCount, Math.min(rootCount, 2048));
+    assert.equal(diagnostics.rootBudgetExceeded, rootCount > 2048);
+    assert.equal(diagnostics.accessibleTraversalComplete, rootCount <= 2048);
+    assert.equal(diagnostics.rootBudget, 2048);
+    assert.equal(diagnostics.elementBudget, 50000);
+    assert.equal(diagnostics.nodeBudget, 5000);
+    assert.equal(diagnostics.unreadableFrameBudget, 8);
+    assert.equal(source.replace('rootBudget=2048,', 'rootBudget=512,'), POST_SCREENSHOT_SAFETY_EXTRACTOR);
+    assert.doesNotMatch(source, /[^\x00-\x7f]/);
+  }
+  const changed = await classifyShadowRootSafety(bulk, 2048, { afterUrl: `${bulk}?preview=changed` });
+  assert.equal(changed.safety.safe, false);
+  assert.equal(changed.safety.code, 'PAGE_CHANGED_DURING_LIVE_SAFETY_PROBE');
+});
+
+test('bulk-upload root budget never extends to query, fragment, port, similar paths or other pages', async () => {
+  for (const url of [
+    'https://sellercentral.amazon.com/product-search/bulk?preview=1',
+    'https://sellercentral.amazon.com/product-search/bulk#preview',
+    'https://sellercentral.amazon.com/product-search/bulk/',
+    'https://sellercentral.amazon.com/product-search/bulk-other',
+    'https://sellercentral.amazon.com/product-search/bulk/preview',
+    'https://sellercentral.amazon.com:443/product-search/bulk',
+    'https://sellercentral.amazon.com./product-search/bulk',
+    'https://sellercentral.amazon.com/voice-of-the-customer',
+    'https://www.amazon.com/product-search/bulk',
+  ]) {
+    const { safety, source } = await classifyShadowRootSafety(url, 513);
+    assert.equal(source, POST_SCREENSHOT_SAFETY_EXTRACTOR, url);
+    assert.equal(safety.safe, false, url);
+    assert.equal(safety.code, 'LIVE_SAFETY_PROBE_INCOMPLETE', url);
+    assert.equal(safety.liveProbeDiagnostics.rootBudget, 512, url);
+    assert.equal(safety.liveProbeDiagnostics.rootBudgetExceeded, true, url);
+  }
+  for (const url of [
+    'http://sellercentral.amazon.com/product-search/bulk',
+    'https://sellercentral.amazon.com:8443/product-search/bulk',
+    'https://user:secret@sellercentral.amazon.com/product-search/bulk',
+    'https://sellercentral.amazon.com.evil.example/product-search/bulk',
+  ]) {
+    const { safety, source } = await classifyShadowRootSafety(url, 513);
+    assert.equal(source, null, 'unapproved URL must not run a DOM probe');
+    assert.equal(safety.safe, false);
+    assert.equal(safety.code, 'UNAPPROVED_AMAZON_HOST');
+  }
+});
+
+test('bulk-upload larger traversal still detects hidden authentication and blocking controls in its deepest root', async () => {
+  const bulk = 'https://sellercentral.amazon.com/product-search/bulk';
+  for (const tailRisk of ['auth', 'blocked']) {
+    const { safety } = await classifyShadowRootSafety(bulk, 2048, { tailRisk });
+    assert.equal(safety.safe, false);
+    assert.equal(safety.code, tailRisk === 'auth' ? 'AUTH_SENSITIVE' : 'ACCESS_BLOCKED');
+    assert.equal(safety.authSensitive, true);
+    assert.equal(safety.blocked, tailRisk === 'blocked');
+    assert.equal(safety.liveProbeDiagnostics.scannedRootCount, 2048);
+    assert.equal(safety.liveProbeDiagnostics.rootBudgetExceeded, false);
+  }
+});
+
 function iframeLiveSafetyProbe({
   authSelector = null, unreadable = false, hidden = false, zeroSize = false, frameMeta = '',
 } = {}) {

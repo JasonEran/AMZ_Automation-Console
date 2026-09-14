@@ -168,7 +168,7 @@ test('dashboard has distinct business/collection states and production controls'
   assert.match(DASHBOARD_HTML, /job\.resultCenter/);
   assert.match(DASHBOARD_HTML, /id="uploadStoreFilter"/);
   assert.match(DASHBOARD_HTML, /id="uploadStateFilter"/);
-  assert.match(DASHBOARD_HTML, /id="confirmPassword"/);
+  assert.doesNotMatch(DASHBOARD_HTML, /confirmPassword/);
   assert.match(DASHBOARD_HTML, /id="confirmPhrase"/);
   assert.match(DASHBOARD_HTML, /唯一允许改变 Amazon 状态的功能/);
   assert.match(DASHBOARD_HTML, /结果未知时系统不会自动重试/);
