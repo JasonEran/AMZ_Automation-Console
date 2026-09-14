@@ -169,3 +169,12 @@ test('duplicate tickets and delayed exchange cannot bypass handshake timeout', a
   assert.equal(h.posts.length, 1);
   assert.match(h.status.textContent, /过期/);
 });
+
+
+test('store-free dashboard challenge completes with the same HTTP CRM handshake', async () => {
+  const h = harness({ context: { storeKey: null, checkId: null, view: 'dashboard' } });
+  assert.equal(h.posts[0].data.storeKey, null);
+  assert.equal(h.posts[0].data.view, 'dashboard');
+  await h.send();
+  assert.deepEqual(h.navigations, [{ url: '/crm/', detached: true }]);
+});

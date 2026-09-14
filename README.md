@@ -196,7 +196,7 @@ node scripts/sanitize-history.mjs --apply
 
 CRM 使用稳定幂等键、成功账本与相同的重试键；通道失败不会阻止主报告落盘。未取得正式 HTTPS 导入契约前，只生成 [CRM 兼容交换文件](docs/CRM_EXPORT_COMPATIBILITY.md)，不会向参考 CRM 写入。`npm run test-notify` 会向已启用的通知通道发送明确标注的“测试消息”，而 CRM 只做结构与幂等 dry-run，不会创建虚假业务记录。
 
-CRM 后端也可通过独立认证读取九项店铺监测的「探测结果」与「完整保存数据」，并接入单店只读免密跳转；此入站接口不触发采集，也不包含竞品情报。接入、字段、分页、权限与 HTTPS 回调条件见 [CRM API 文档](docs/CRM_API.md)。
+CRM 后端也可通过独立认证读取九项店铺监测的「探测结果」与「完整保存数据」，并接入免密巡检面板（默认查看全部已启用店铺，兼容旧单店入口）；此入站接口不触发采集，也不包含竞品情报。接入、字段、分页、权限与 HTTPS 回调条件见 [CRM API 文档](docs/CRM_API.md)。
 
 ## 看板
 

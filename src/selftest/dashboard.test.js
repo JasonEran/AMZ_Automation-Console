@@ -140,7 +140,7 @@ test('dashboard has distinct business/collection states and production controls'
   assert.match(DASHBOARD_HTML, /data-view-panel="system"/);
   const sidebarNavigation = /<nav class="nav"[^>]*>([\s\S]*?)<\/nav>/.exec(DASHBOARD_HTML)[1];
   const navViews = [...sidebarNavigation.matchAll(/<a href="#[^"]+" data-view="([^"]+)"/g)].map((match) => match[1]);
-  const panels = [...DASHBOARD_HTML.matchAll(/data-view-panel="([^"]+)"/g)].map((match) => match[1]);
+  const panels = [...DASHBOARD_HTML.replace(/<script[^>]*>[\s\S]*?<\/script>/g, '').matchAll(/data-view-panel="([^"]+)"/g)].map((match) => match[1]);
   assert.deepEqual(navViews, ['overview', 'store-risk', 'customer-voice', 'product-status', 'intelligence', 'ads-watch', 'upload', 'system', 'stores', 'users']);
   assert.deepEqual(panels, navViews);
   assert.match(DASHBOARD_HTML, /CHECK_GROUPS=\{risk:\['store-health','performance'\],voice:\['feedback','inbox','reviews','voc'\],product:\['asin-health','outlet'\],ads:\['ads-status'\]\}/);

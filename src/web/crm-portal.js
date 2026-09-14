@@ -326,4 +326,4 @@ export const CRM_SSO_SCRIPT = String.raw`
 })();
 `;
 
-export const CRM_SSO_HTML = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>正在验证 CRM 授权</title><style>${CRM_PORTAL_STYLE}</style></head><body><main class="sso"><section class="panel"><p class="eyebrow">AMZ GUARD / CRM</p><h1>正在验证访问授权</h1><p id="ssoMessage" role="status">请稍候，正在进入授权店铺的只读监测页面…</p></section></main><script>${CRM_SSO_SCRIPT}</script></body></html>`;
+export const CRM_SSO_HTML = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>正在验证 CRM 授权</title><style>${CRM_PORTAL_STYLE}</style></head><body><main class="sso"><section class="panel"><p class="eyebrow">AMZ GUARD / CRM</p><h1>正在验证访问授权</h1><p id="ssoMessage" role="status">请稍候，正在进入只读监测页面…</p></section></main><script>${CRM_SSO_SCRIPT}</script></body></html>`;

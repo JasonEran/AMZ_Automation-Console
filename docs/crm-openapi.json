@@ -531,7 +531,7 @@
       "get": {
         "operationId": "beginCrmBrowserSso",
         "summary": "发起重定向免密登录",
-        "description": "无需已有凭据。创建有效期为 120 秒的浏览器挑战和绑定 Cookie，再重定向到服务端固定配置的 CRM 回调地址。CRM 后端签票前必须确认当前用户身份及目标店铺权限。此接口不接受调用方指定回调地址。",
+        "description": "无需已有凭据。创建有效期为 120 秒的浏览器挑战和绑定 Cookie，再重定向到服务端固定配置的 CRM 回调地址。CRM 后端签票前必须确认当前用户身份及全部店铺面板访问权限（旧单店方式检查该店权限）。此接口不接受调用方指定回调地址。\n省略 storeKey/view/checkId 默认进入全部已启用店铺的只读巡检面板；旧单店参数继续兼容。",
         "tags": [
           "Browser SSO"
         ],
@@ -540,17 +540,18 @@
           {
             "name": "storeKey",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "$ref": "#/components/schemas/StoreKey"
-            }
+            },
+            "description": "仅旧单店入口填写；默认面板不要传此参数。"
           },
           {
             "name": "view",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "$ref": "#/components/schemas/View"
+              "$ref": "#/components/schemas/SsoView"
             }
           },
           {
@@ -619,7 +620,7 @@
       "get": {
         "operationId": "beginCrmPopupSso",
         "summary": "打开免密登录 popup",
-        "description": "适用于通过弹窗接入的 CRM 页面，包括 HTTP CRM；监测服务始终使用 HTTPS。CRM 页面须先注册消息监听，再在按钮点击处理中同步打开弹窗，挑战消息只发送一次。\n\n接口创建有效期为 120 秒的挑战和 Secure、HttpOnly 绑定 Cookie，返回 HTML 页面，通过 postMessage 与唯一配置的 CRM origin 通信。两端都须校验精确 origin、窗口来源、requestId 和 challengeId。CRM 后端签票前须独立确认当前用户身份及店铺权限；postMessage 不传 CRM 登录 Token 或监测 API Token。\n\n须配置 AMZGUARD_CRM_BRIDGE_ORIGIN，无需配置重定向回调。与 /crm/sso/start 共用每分钟 10 次的启动限额。消息协议和接入顺序见 CRM_API.md。",
+        "description": "适用于通过弹窗接入的 CRM 页面，包括 HTTP CRM；监测服务始终使用 HTTPS。CRM 页面须先注册消息监听，再在按钮点击处理中同步打开弹窗，挑战消息只发送一次。\n\n接口创建有效期为 120 秒的挑战和 Secure、HttpOnly 绑定 Cookie，返回 HTML 页面，通过 postMessage 与唯一配置的 CRM origin 通信。两端都须校验精确 origin、窗口来源、requestId 和 challengeId。CRM 后端签票前须独立确认当前用户身份及面板访问权限（旧单店方式检查该店权限）；postMessage 不传 CRM 登录 Token 或监测 API Token。\n\n须配置 AMZGUARD_CRM_BRIDGE_ORIGIN，无需配置重定向回调。与 /crm/sso/start 共用每分钟 10 次的启动限额。消息协议和接入顺序见 CRM_API.md。\n省略 storeKey/view/checkId 默认进入全部已启用店铺的只读巡检面板；旧单店参数继续兼容。",
         "tags": [
           "Browser SSO"
         ],
@@ -628,17 +629,18 @@
           {
             "name": "storeKey",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "$ref": "#/components/schemas/StoreKey"
-            }
+            },
+            "description": "仅旧单店入口填写；默认面板不要传此参数。"
           },
           {
             "name": "view",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "$ref": "#/components/schemas/View"
+              "$ref": "#/components/schemas/SsoView"
             }
           },
           {
@@ -723,7 +725,7 @@
       "post": {
         "operationId": "issueCrmBrowserTicket",
         "summary": "签发一次性登录票据",
-        "description": "仅供 CRM 后端调用，必须使用 Bearer Token；浏览器会话不能签票。CRM 后端须先确认当前用户身份及店铺权限。challengeId、storeKey、view 和 checkId 须与浏览器挑战一致，每个挑战只能签发一张票据。票据最多有效 60 秒，且不会晚于挑战到期。目标地址由服务端生成，不接受调用方指定跳转地址。",
+        "description": "仅 CRM 后端使用 Bearer Token 调用。默认面板只需 challengeId 与 subject；后端先确认用户有权查看全部店铺面板。旧单店模式仍须传回 storeKey/view/checkId 并检查该店权限。票据与挑战范围必须一致，单次使用、最多 60 秒、绑定浏览器；不自动重试。",
         "tags": [
           "Browser SSO"
         ],
@@ -876,7 +878,7 @@
       "post": {
         "operationId": "exchangeCrmBrowserTicket",
         "summary": "兑换票据并建立浏览器会话",
-        "description": "须携带由 /crm/sso/start 或 /crm/sso/bridge 设置的独立绑定 Cookie、JSON 中的有效一次性票据，以及符合要求的同源请求头。校验成功后同步消费票据、清除绑定 Cookie，并建立有效期为 30 分钟的 CRM 专用单店会话。票据和会话保存在进程内存中，服务重启或 CRM 配置变化后失效。",
+        "description": "须携带由 /crm/sso/start 或 /crm/sso/bridge 设置的独立绑定 Cookie、JSON 中的有效一次性票据，以及符合要求的同源请求头。校验成功后同步消费票据、清除绑定 Cookie，并建立有效期为 30 分钟的 CRM 专用只读会话（默认面板或旧单店范围）。票据和会话保存在进程内存中，服务重启或 CRM 配置变化后失效。",
         "tags": [
           "Browser SSO"
         ],
@@ -1071,7 +1073,7 @@
       "get": {
         "operationId": "getCrmPortalWithoutSlash",
         "summary": "打开 CRM 只读门户",
-        "description": "须持有 CRM 专用会话 Cookie。Dashboard Cookie 和 Bearer 请求头不能授权访问此页面；不接受查询参数。",
+        "description": "持独立 CRM Cookie 加载页面：默认显示全部已启用店铺的只读巡检面板，旧单店会话显示原单店页。面板不授予管理、上传或竞品情报权限，页面内部使用 /crm/dashboard/ 的 GET 只读路径；这些内部数据不属于供 CRM 后端调用的公开数据 API。",
         "tags": [
           "Browser SSO"
         ],
@@ -1142,7 +1144,7 @@
       "get": {
         "operationId": "getCrmPortal",
         "summary": "打开 CRM 只读门户",
-        "description": "须持有 CRM 专用会话 Cookie。Dashboard Cookie 和 Bearer 请求头不能授权访问此页面；不接受查询参数。",
+        "description": "持独立 CRM Cookie 加载页面：默认显示全部已启用店铺的只读巡检面板，旧单店会话显示原单店页。面板不授予管理、上传或竞品情报权限，页面内部使用 /crm/dashboard/ 的 GET 只读路径；这些内部数据不属于供 CRM 后端调用的公开数据 API。",
         "tags": [
           "Browser SSO"
         ],
@@ -1213,7 +1215,7 @@
       "get": {
         "operationId": "getCrmBrowserSession",
         "summary": "获取当前浏览器会话范围",
-        "description": "须持有 CRM 专用会话 Cookie。仅返回店铺、检查项和视图导航信息、到期时间及 readOnly，不返回 CRM 用户标识 subject、客户端凭据或 Dashboard 角色。",
+        "description": "须持有 CRM 专用会话 Cookie。仅返回店铺、检查项和视图导航信息、到期时间及 readOnly，不返回 CRM 用户标识 subject、客户端凭据或 Dashboard 角色。 默认面板返回 storeKey=null、checkId=null、view=dashboard。",
         "tags": [
           "Browser SSO"
         ],
@@ -1292,7 +1294,7 @@
         "type": "apiKey",
         "in": "cookie",
         "name": "__Host-amzguard_crm",
-        "description": "Dedicated opaque browser session from ticket exchange; one store, read-only, 30 minutes, Secure/HttpOnly/Path=/SameSite=Lax. Independent of Dashboard authentication. Scope is revalidated on access."
+        "description": "Dedicated opaque read-only browser session: default shared monitoring dashboard, or legacy single-store scope. Valid for 30 minutes; Secure, HttpOnly, Path=/, SameSite=Lax. Does not grant a local Dashboard role. Dashboard sessions use only the panel read paths, not the machine data API."
       },
       "CrmBrowserBinding": {
         "type": "apiKey",
@@ -1339,7 +1341,7 @@
           "results",
           "data"
         ],
-        "description": "Initial navigation hint only; storeKey is the authorization scope. A session can read all nine checks for its one authorized store."
+        "description": "Legacy single-store navigation hint. Both views can read all nine checks for the authorized store."
       },
       "Date": {
         "type": "string",
@@ -4039,7 +4041,14 @@
         "type": "object",
         "properties": {
           "storeKey": {
-            "$ref": "#/components/schemas/StoreKey"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StoreKey"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "checkId": {
             "anyOf": [
@@ -4052,7 +4061,7 @@
             ]
           },
           "view": {
-            "$ref": "#/components/schemas/View"
+            "$ref": "#/components/schemas/SsoView"
           },
           "expiresAt": {
             "$ref": "#/components/schemas/Timestamp"
@@ -4104,7 +4113,14 @@
             "description": "Stable CRM subject, without leading/trailing whitespace. The CRM backend must independently authorize this signed-in subject before requesting a ticket. Not returned by session endpoints."
           },
           "storeKey": {
-            "$ref": "#/components/schemas/StoreKey"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StoreKey"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "checkId": {
             "anyOf": [
@@ -4117,16 +4133,52 @@
             ]
           },
           "view": {
-            "$ref": "#/components/schemas/View"
+            "$ref": "#/components/schemas/SsoView"
           }
         },
         "required": [
           "challengeId",
-          "subject",
-          "storeKey",
-          "view"
+          "subject"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "required": [
+                "storeKey"
+              ],
+              "properties": {
+                "storeKey": {
+                  "type": "string"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "view"
+              ],
+              "properties": {
+                "view": {
+                  "enum": [
+                    "results",
+                    "data"
+                  ]
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "view": {
+                  "const": "dashboard"
+                },
+                "checkId": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        ],
+        "description": "默认面板只需 challengeId 和 subject；兼容旧单店入口时还需原样传 storeKey/view/checkId，不允许变更挑战范围。"
       },
       "Ticket": {
         "type": "object",
@@ -4413,6 +4465,15 @@
         },
         "additionalProperties": true,
         "description": "The raw OpenAPI document; not wrapped in the success envelope."
+      },
+      "SsoView": {
+        "type": "string",
+        "enum": [
+          "dashboard",
+          "results",
+          "data"
+        ],
+        "description": "Omit storeKey for the shared read-only dashboard; results/data require an exact authorized store."
       }
     },
     "parameters": {
@@ -4571,7 +4632,7 @@
           "type": "string",
           "format": "uri"
         },
-        "description": "Fixed configured HTTPS CRM callback with challengeId, storeKey, view and optional checkId appended."
+        "description": "Fixed HTTPS CRM callback with challengeId and view; storeKey and checkId appear only for legacy store entry."
       },
       "Cache-Control": {
         "schema": {

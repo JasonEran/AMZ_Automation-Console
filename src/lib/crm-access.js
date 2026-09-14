@@ -34,6 +34,13 @@ function strictObject(input, allowed) {
 }
 
 function destination(input) {
+  // Omitting the store selects the shared read-only dashboard. Legacy links
+  // remain explicitly scoped; a malformed store must never broaden access.
+  if (input.storeKey === undefined || input.storeKey === null) {
+    if (input.view !== undefined && input.view !== 'dashboard') throw failure(400, 'CRM_INVALID_VIEW', 'Dashboard view required without a store');
+    if (input.checkId !== undefined && input.checkId !== null) throw failure(400, 'CRM_INVALID_CHECK', 'Dashboard entry does not accept checkId');
+    return { storeKey: null, checkId: null, view: 'dashboard' };
+  }
   if (typeof input.storeKey !== 'string' || !IDENTIFIER_RE.test(input.storeKey)) {
     throw failure(400, 'CRM_INVALID_STORE', 'A valid storeKey is required');
   }
@@ -85,7 +92,7 @@ function bridgeOrigin(value, publicOrigin) {
  * The HTTP caller owns TLS, canonical Host checks, request limits, same-origin
  * JSON-only exchange, cookie attributes, and denial of non-CRM routes. Keep the
  * browserToken in a Secure/HttpOnly binding cookie, never a response body or URL.
- * A checkId/view selects the initial page; storeKey is the authorization scope.
+ * Legacy checkId/view selects the initial page within one store. Omitting storeKey grants the read-only monitoring dashboard across enabled stores.
  * Errors expose status/statusCode and code without including credential values.
  */
 export function createCrmAccess({ env = process.env, stores = [], now = Date.now, limits = {} } = {}) {
@@ -190,7 +197,7 @@ export function createCrmAccess({ env = process.env, stores = [], now = Date.now
     if (meta.kind === 'session') {
       const record = sessions.get(meta.key);
       if (!record || record.expiresAt <= clock()) throw failure(401, 'CRM_SESSION_INVALID', 'CRM session expired or invalid');
-      checkStore(config, record.scope.storeKey);
+      if (record.scope.view !== 'dashboard') checkStore(config, record.scope.storeKey);
     }
     return meta;
   }
@@ -198,7 +205,7 @@ export function createCrmAccess({ env = process.env, stores = [], now = Date.now
   function begin(config, input) {
     strictObject(input, ['storeKey', 'checkId', 'view']);
     const scope = destination(input);
-    checkStore(config, scope.storeKey);
+    if (scope.view !== 'dashboard') checkStore(config, scope.storeKey);
     const time = clock();
     prune(time); available(challenges, 'challenges');
     const challengeId = crypto.randomBytes(32).toString('base64url');
@@ -239,10 +246,11 @@ export function createCrmAccess({ env = process.env, stores = [], now = Date.now
         { kind: 'client', version: config.version });
     },
 
-    /** Revalidate current client/store scope; a browser session always has one store. */
+    /** Revalidate current client/store scope; legacy browser sessions have one store; dashboard sessions do not grant data API access. */
     authorizeStore(identity, storeKey) {
       const config = requireEnabled();
       const meta = verifyPrincipal(identity, config);
+      if (meta.kind === 'session' && identity.view === 'dashboard') throw failure(403, 'CRM_DASHBOARD_ONLY', 'Use the read-only dashboard');
       checkStore(config, storeKey);
       if (meta.kind === 'session' && identity.storeKey !== storeKey) {
         throw failure(403, 'CRM_STORE_FORBIDDEN', 'Store is outside this CRM session');
@@ -259,7 +267,7 @@ export function createCrmAccess({ env = process.env, stores = [], now = Date.now
       callbackUrl.searchParams.set('challengeId', challengeId);
       // Navigation hints only: CRM must independently authorize its signed-in
       // subject. issueTicket checks all three fields against the saved scope.
-      callbackUrl.searchParams.set('storeKey', scope.storeKey);
+      if (scope.storeKey !== null) callbackUrl.searchParams.set('storeKey', scope.storeKey);
       callbackUrl.searchParams.set('view', scope.view);
       if (scope.checkId !== null) callbackUrl.searchParams.set('checkId', scope.checkId);
       return { challengeId, browserToken, callbackUrl: callbackUrl.href, expiresAt };
@@ -284,7 +292,7 @@ export function createCrmAccess({ env = process.env, stores = [], now = Date.now
       if (verifyPrincipal(identity, config).kind !== 'client') throw failure(403, 'CRM_CLIENT_REQUIRED', 'CRM machine authentication required');
       strictObject(input, ['challengeId', 'subject', 'storeKey', 'checkId', 'view']);
       const scope = destination(input);
-      checkStore(config, scope.storeKey);
+      if (scope.view !== 'dashboard') checkStore(config, scope.storeKey);
       if (typeof input.subject !== 'string' || !input.subject || input.subject.length > 128
         || input.subject.trim() !== input.subject || /[\x00-\x1f\x7f]/.test(input.subject)) {
         throw failure(400, 'CRM_INVALID_SUBJECT', 'A stable CRM subject is required');
@@ -318,7 +326,7 @@ export function createCrmAccess({ env = process.env, stores = [], now = Date.now
         || !equalSecret(digest(browserToken), challenge.browserHash)) {
         throw failure(401, 'CRM_TICKET_INVALID', 'CRM ticket or browser binding is expired or invalid');
       }
-      checkStore(config, record.scope.storeKey);
+      if (record.scope.view !== 'dashboard') checkStore(config, record.scope.storeKey);
       available(sessions, 'sessions');
       const sessionToken = crypto.randomBytes(32).toString('base64url');
       const sessionKey = digest(sessionToken);
@@ -339,7 +347,7 @@ export function createCrmAccess({ env = process.env, stores = [], now = Date.now
       const key = typeof sessionToken === 'string' && TOKEN_RE.test(sessionToken) ? digest(sessionToken) : '';
       const record = sessions.get(key);
       if (!record) throw failure(401, 'CRM_SESSION_INVALID', 'CRM session expired or invalid');
-      checkStore(config, record.scope.storeKey);
+      if (record.scope.view !== 'dashboard') checkStore(config, record.scope.storeKey);
       return principal(record.value, { kind: 'session', version: config.version, key });
     },
 

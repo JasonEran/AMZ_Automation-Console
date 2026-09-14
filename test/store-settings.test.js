@@ -66,7 +66,7 @@ test('settings are bundled in the existing shell and every rendered script compi
   const scripts = [...DASHBOARD_HTML.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)];
   for (const [, script] of scripts) assert.doesNotThrow(() => new vm.Script(script));
   assert.doesNotMatch(installStoreSettings.toString(), /innerHTML|\/api\/crm|\/api\/product-uploads|\/api\/.*run/);
-  assert.match(DASHBOARD_HTML, /storeSettings\.loadUIConfig\(\)\.then/);
+  assert.match(DASHBOARD_HTML, /initializeSettings\.then/);
   assert.match(DASHBOARD_HTML, /Math\.min\(displaySettings\.listPageSize,50\)/);
   for (const [, pattern] of STORE_SETTINGS_MARKUP.matchAll(/pattern="([^"]+)"/g)) assert.doesNotThrow(() => new RegExp(pattern, 'v'));
 });
