@@ -14,7 +14,8 @@ const INTELLIGENCE_CLIENT = intelligenceAsset('intelligence-client.js');
  * Single-file operations dashboard. It intentionally has no build step or
  * third-party assets, so the collector can serve it anywhere Node runs.
  */
-export const DASHBOARD_HTML = `<!doctype html>
+export function renderDashboard({ crmReadOnly = false } = {}) {
+  return `<!doctype html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
@@ -356,6 +357,14 @@ ${ONBOARDING_MARKUP}
 <noscript><div class="noscript">此看板需要启用 JavaScript 才能显示实时数据。</div></noscript>
 <script>
 (function(){
+  var crmReadOnly = ${JSON.stringify(crmReadOnly)};
+  var sessionEnded = false;
+  function endCrmSession(message){
+    if(sessionEnded)return;
+    sessionEnded=true;uiReady=false;refreshTimers.forEach(clearInterval);
+    document.querySelectorAll('body > *').forEach(function(el){el.style.display='none'});
+    var notice=document.createElement('p');notice.textContent=message;notice.style.padding='24px';document.body.appendChild(notice);
+  }
   var data = null;
   var uploadData = null;
   var userData = null;
@@ -397,7 +406,7 @@ ${ONBOARDING_MARKUP}
   function renderPager(id,key,total){var el=q(id);if(!el)return;var size=PAGE_SIZE[key];var count=Math.max(1,Math.ceil(total/size));pages[key]=Math.max(1,Math.min(pages[key]||1,count));if(total<=size){el.innerHTML=total?'<span>共 '+total+' 条</span>':'';return}el.innerHTML='<button type="button" data-page-key="'+key+'" data-page-dir="-1" '+(pages[key]===1?'disabled':'')+'>上一页</button><b>'+pages[key]+' / '+count+'</b><button type="button" data-page-key="'+key+'" data-page-dir="1" '+(pages[key]===count?'disabled':'')+'>下一页</button><span>共 '+total+' 条</span>'}
   function activateView(name){
     if(!uiReady)return;
-    if(!VIEW_META[name])name='overview';
+    if(!VIEW_META[name] || (crmReadOnly && ['intelligence','upload','stores','users'].includes(name)))name='overview';
     if(activeView===name)return;
     activeView=name;
     document.querySelectorAll('[data-view-panel]').forEach(function(x){x.classList.toggle('active',x.getAttribute('data-view-panel')===name)});
@@ -614,7 +623,7 @@ ${ONBOARDING_MARKUP}
   }
   async function loadUploads(page){
     var history=q('#uploadHistory');history.setAttribute('aria-busy','true');var store=q('#uploadStoreFilter').value,state=q('#uploadStateFilter').value;
-    try{var r=await fetch('/api/product-uploads?page='+encodeURIComponent(page||1)+'&pageSize='+Math.min(displaySettings.listPageSize,50)+'&store='+encodeURIComponent(store)+'&state='+encodeURIComponent(state)+'&includeReset='+(q('#includeResetUploads').checked?'1':'0'),{cache:'no-store'});if(r.status===401){location.href='/login';return}var body=await r.json();if(!r.ok)throw new Error(body.error||('HTTP '+r.status));uploadData=body;uploadPage=body.pagination.page;renderUploadContext();renderUploadHistory()}
+    try{var r=await fetch('/api/product-uploads?page='+encodeURIComponent(page||1)+'&pageSize='+Math.min(displaySettings.listPageSize,50)+'&store='+encodeURIComponent(store)+'&state='+encodeURIComponent(state)+'&includeReset='+(q('#includeResetUploads').checked?'1':'0'),{cache:'no-store'});if(r.status===401){if(crmReadOnly){endCrmSession('会话已失效，请从 CRM 重新进入。')}else location.href='/login';return}var body=await r.json();if(!r.ok)throw new Error(body.error||('HTTP '+r.status));uploadData=body;uploadPage=body.pagination.page;renderUploadContext();renderUploadHistory()}
     catch(e){showUploadMessage('上传工作区加载失败：'+e.message,'bad')}finally{history.removeAttribute('aria-busy')}
   }
   function showStagedUpload(job){
@@ -659,7 +668,7 @@ ${ONBOARDING_MARKUP}
     q('#saveAdsRules').disabled=!adsRulesData.canManage;if(!adsRulesData.canManage)showSetting('#adsRulesMessage','当前账户可查看规则，但只有管理员可以修改。','neutral')
   }
   async function loadAdsRules(){
-    try{var r=await fetch('/api/ads-rules',{cache:'no-store'});if(r.status===401){location.href='/login';return}var body=await r.json();if(!r.ok)throw new Error(body.error||('HTTP '+r.status));adsRulesData=body;renderAdsRules()}catch(e){showSetting('#adsRulesMessage','广告规则加载失败：'+e.message,'bad')}
+    try{var r=await fetch('/api/ads-rules',{cache:'no-store'});if(r.status===401){if(crmReadOnly){endCrmSession('会话已失效，请从 CRM 重新进入。')}else location.href='/login';return}var body=await r.json();if(!r.ok)throw new Error(body.error||('HTTP '+r.status));adsRulesData=body;renderAdsRules()}catch(e){showSetting('#adsRulesMessage','广告规则加载失败：'+e.message,'bad')}
   }
   async function saveAdsRules(e){
     e.preventDefault();if(!adsRulesData||!adsRulesData.canManage)return;var rules=[].slice.call(document.querySelectorAll('[data-ads-rule]')).map(function(input){return {storeKey:input.getAttribute('data-ads-rule'),nameContains:input.value.trim()}});var button=q('#saveAdsRules');button.disabled=true;
@@ -671,7 +680,7 @@ ${ONBOARDING_MARKUP}
     if(!userData.canManage)showSetting('#createUserMessage','当前账户不是管理员，不能创建或维护其他账户。','neutral')
   }
   async function loadUsers(){
-    try{var r=await fetch('/api/users',{cache:'no-store'});if(r.status===401){location.href='/login';return}var body=await r.json();if(!r.ok)throw new Error(body.error||('HTTP '+r.status));userData=body;renderUsers()}catch(e){showSetting('#userMessage','用户列表加载失败：'+e.message,'bad')}
+    try{var r=await fetch('/api/users',{cache:'no-store'});if(r.status===401){if(crmReadOnly){endCrmSession('会话已失效，请从 CRM 重新进入。')}else location.href='/login';return}var body=await r.json();if(!r.ok)throw new Error(body.error||('HTTP '+r.status));userData=body;renderUsers()}catch(e){showSetting('#userMessage','用户列表加载失败：'+e.message,'bad')}
   }
   async function createUser(e){
     e.preventDefault();if(!userData||!userData.canManage)return;var payload={username:q('#createUsername').value.trim(),password:q('#createPassword').value,role:q('#createRole').value};
@@ -714,7 +723,7 @@ ${ONBOARDING_MARKUP}
     if(!activeDetail||!date)return;var request=++historyRequest,detail=activeDetail;historySelection={date:date,runId:runId||'',page:page||1};
     q('#historyDate').value=date;document.querySelectorAll('.history-day').forEach(function(button){button.setAttribute('aria-pressed',String(button.dataset.historyDate===date))});
     var target=q('#historyRecords');target.setAttribute('aria-busy','true');if(historyData&&historyData.storeKey===detail.storeKey&&historyData.checkId===detail.checkId&&historyData.date===date&&historyData.page===(page||1)&&historyData.selectedRun&&historyData.selectedRun.runId===(runId||''))renderHistoryRecords(historyData);else target.innerHTML='<div class="empty">正在读取 '+esc(date)+' 的采集记录…</div>';
-    try{var params=new URLSearchParams({store:detail.storeKey,date:date,page:String(page||1)});if(runId)params.set('runId',runId);var response=await fetch('/api/history/'+encodeURIComponent(detail.checkId)+'?'+params,{cache:'no-store'});if(response.status===401){location.href='/login';return}if(!response.ok)throw new Error('历史读取失败（'+response.status+'）');var body=await response.json();if(request!==historyRequest||!activeDetail||detail!==activeDetail)return;historyData=body;historySelection={date:date,runId:body.selectedRun?body.selectedRun.runId:'',page:body.page};renderHistoryRecords(body)}catch(error){if(request===historyRequest&&activeDetail)target.innerHTML='<div class="empty">'+esc(error.message)+'。可重新选择日期重试。</div>'}finally{if(request===historyRequest)target.removeAttribute('aria-busy')}
+    try{var params=new URLSearchParams({store:detail.storeKey,date:date,page:String(page||1)});if(runId)params.set('runId',runId);var response=await fetch('/api/history/'+encodeURIComponent(detail.checkId)+'?'+params,{cache:'no-store'});if(response.status===401){if(crmReadOnly){endCrmSession('会话已失效，请从 CRM 重新进入。')}else location.href='/login';return}if(!response.ok)throw new Error('历史读取失败（'+response.status+'）');var body=await response.json();if(request!==historyRequest||!activeDetail||detail!==activeDetail)return;historyData=body;historySelection={date:date,runId:body.selectedRun?body.selectedRun.runId:'',page:body.page};renderHistoryRecords(body)}catch(error){if(request===historyRequest&&activeDetail)target.innerHTML='<div class="empty">'+esc(error.message)+'。可重新选择日期重试。</div>'}finally{if(request===historyRequest)target.removeAttribute('aria-busy')}
   }
   function closeDetail(){activeDetail=null;historyRequest++;historySelection=null;historyData=null;q('#drawerBackdrop').classList.remove('open');q('#drawerBackdrop').setAttribute('aria-hidden','true');document.body.style.overflow='';if(drawerReturnFocus&&drawerReturnFocus.focus)drawerReturnFocus.focus()}
 
@@ -722,7 +731,7 @@ ${ONBOARDING_MARKUP}
   async function load(){
     if(loading||!uiReady)return;loading=true;
     q('#refresh').disabled=true;q('#refresh').setAttribute('aria-busy','true');
-    try{var r=await fetch('/api/status',{cache:'no-store'});if(r.status===401){location.href='/login';return}if(!r.ok)throw new Error('服务暂时不可用（'+r.status+'）');var next=await r.json();if(!next||!Array.isArray(next.stores)||!Array.isArray(next.checks))throw new Error('返回数据格式不完整');if(data&&data.progress&&next.progress&&Date.parse(data.progress.updatedAt)>Date.parse(next.progress.updatedAt))next.progress=data.progress;data=next;q('#error').style.display='none';render();if(activeDetail&&q('#drawerBackdrop').classList.contains('open'))openDetail(activeDetail.storeKey,activeDetail.checkId,true)}
+    try{var r=await fetch('/api/status',{cache:'no-store'});if(r.status===401){if(crmReadOnly){endCrmSession('会话已失效，请从 CRM 重新进入。')}else location.href='/login';return}if(!r.ok)throw new Error('服务暂时不可用（'+r.status+'）');var next=await r.json();if(sessionEnded)return;if(!next||!Array.isArray(next.stores)||!Array.isArray(next.checks))throw new Error('返回数据格式不完整');if(data&&data.progress&&next.progress&&Date.parse(data.progress.updatedAt)>Date.parse(next.progress.updatedAt))next.progress=data.progress;data=next;q('#error').style.display='none';render();if(activeDetail&&q('#drawerBackdrop').classList.contains('open'))openDetail(activeDetail.storeKey,activeDetail.checkId,true)}
     catch(e){q('#error').textContent='看板数据加载失败：'+e.message+'。系统会继续自动重试。';q('#error').style.display='block'}
     finally{loading=false;q('#refresh').disabled=false;q('#refresh').removeAttribute('aria-busy')}
   }
@@ -731,8 +740,8 @@ ${ONBOARDING_MARKUP}
     var controller=new AbortController(),timeout=setTimeout(function(){controller.abort()},8000);
     try{
       var response=await fetch('/api/progress',{cache:'no-store',signal:controller.signal});
-      if(response.status===401){location.href='/login';return}if(!response.ok)throw new Error('Progress unavailable');
-      var next=await response.json();if(!next||typeof next.active!=='boolean')throw new Error('Invalid progress');
+      if(response.status===401){if(crmReadOnly){endCrmSession('会话已失效，请从 CRM 重新进入。')}else location.href='/login';return}if(!response.ok)throw new Error('Progress unavailable');
+      var next=await response.json();if(sessionEnded)return;if(!next||typeof next.active!=='boolean')throw new Error('Invalid progress');
       var previous=data.progress||{};progressDisconnected=false;
       // A concurrent, slower status request must not roll live progress back.
       if(!previous.updatedAt||!next.updatedAt||Date.parse(next.updatedAt)>=Date.parse(previous.updatedAt))data.progress=next;
@@ -760,8 +769,16 @@ ${ONBOARDING_MARKUP}
     if(data)render();
   }
   var storeSettings=(${installStoreSettings.toString()})({window:window,document:document,settingsDefaults:${JSON.stringify(UI_DEFAULTS)},views:Object.keys(VIEW_META).map(function(id){return {id:id,title:VIEW_META[id][0]}}),onUiSettings:applyDisplaySettings,onStoresSaved:async function(){await Promise.all([load(),loadAdsRules(),loadUploads(uploadPage)])}});
-  storeSettings.loadUIConfig().then(function(){activateView(location.hash.slice(1)||storeSettings.getDefaultView());if(activeView==='stores')storeSettings.activate();load()});
+  var initializeSettings=crmReadOnly ? fetch('/api/ui-config',{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('会话已失效，请从 CRM 重新进入');return r.json()}).then(function(body){applyDisplaySettings(body.settings)}) : storeSettings.loadUIConfig();
+  if(crmReadOnly){
+    ['intelligence','upload','stores','users'].forEach(function(id){document.querySelectorAll('[data-view="'+id+'"],[data-view-panel="'+id+'"]').forEach(function(el){el.hidden=true;el.style.display='none'})});
+    q('.logout-form').addEventListener('submit',async function(event){event.preventDefault();var r=await fetch('/crm/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});if(r.ok){endCrmSession('已退出，请从 CRM 重新进入。')}else{q('#error').textContent='退出失败，请重试。';q('#error').style.display='block'}});
+  }
+  initializeSettings.then(function(){activateView(location.hash.slice(1)||storeSettings.getDefaultView());if(activeView==='stores')storeSettings.activate();load()}).catch(function(error){q('#error').textContent=error.message;q('#error').style.display='block'});
 })();
 </script>
 </body>
-</html>`;
+</html>`.replaceAll('/api/', crmReadOnly ? '/crm/dashboard/api/' : '/api/');
+}
+
+export const DASHBOARD_HTML = renderDashboard();

@@ -386,3 +386,24 @@ test('adding, rotating, removing or invalidating bridge configuration clears old
   f.env.AMZGUARD_CRM_BRIDGE_ORIGIN = 'http://crm.example.test';
   rejects(() => f.access.authenticateSession(login.sessionToken), 401, 'CRM_SESSION_INVALID');
 });
+
+
+test('dashboard entry needs no store, stays browser bound and cannot broaden legacy tickets', () => {
+  const f = fixture();
+  const started = f.access.beginChallenge({});
+  assert.equal(new URL(started.callbackUrl).searchParams.get('storeKey'), null);
+  const issued = f.access.issueTicket(f.machine(), { challengeId: started.challengeId, subject: 'crm-viewer' });
+  const ticket = new URLSearchParams(new URL(issued.loginUrl).hash.slice(1)).get('ticket');
+  rejects(() => f.access.exchangeTicket(ticket, 'X'.repeat(43)), 401, 'CRM_TICKET_INVALID');
+  const login = f.access.exchangeTicket(ticket, started.browserToken);
+  assert.equal(login.session.view, 'dashboard');
+  assert.equal(login.session.storeKey, null);
+  rejects(() => f.access.authorizeStore(login.session, 'US-01'), 403, 'CRM_DASHBOARD_ONLY');
+  rejects(() => f.access.exchangeTicket(ticket, started.browserToken), 401, 'CRM_TICKET_INVALID');
+  const legacy = f.access.beginChallenge(f.dest);
+  rejects(() => f.access.issueTicket(f.machine(), { challengeId: legacy.challengeId, subject: 'crm-viewer' }), 403, 'CRM_DESTINATION_MISMATCH');
+  const panel = f.access.beginChallenge({});
+  rejects(() => f.access.issueTicket(f.machine(), { ...f.dest, challengeId: panel.challengeId, subject: 'crm-viewer' }), 403, 'CRM_DESTINATION_MISMATCH');
+  f.advance(1_800_000);
+  rejects(() => f.access.authenticateSession(login.sessionToken), 401, 'CRM_SESSION_INVALID');
+});

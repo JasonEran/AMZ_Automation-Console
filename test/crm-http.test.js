@@ -9,6 +9,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { CHECKS as CHECK_REGISTRY } from '../src/checks/registry.js';
 
@@ -1048,4 +1049,93 @@ test('HTTP bridge origin changes revoke sessions and outstanding tickets; disabl
   assert.equal(capability.data.ssoAvailable, true);
   await problem(await f.request('/crm/sso/bridge?storeKey=US-A&view=results&requestId=' + 'R'.repeat(43)), 503, 'CRM_BRIDGE_UNAVAILABLE');
   assert.equal((await f.request('/crm/sso/start?storeKey=US-A&view=results')).status, 303);
+});
+
+
+test('store-free SSO opens the shared panel with all enabled stores and denies every write surface', async t => {
+  const f = await fixture(t, { crmOverrides: { AMZGUARD_CRM_BRIDGE_ORIGIN: 'http://crm.example.test' } });
+  const start = await f.request('/crm/sso/bridge?requestId=' + 'R'.repeat(43));
+  assert.equal(start.status, 200);
+  const context = JSON.parse((await start.text()).match(/id="crmBridgeContext">([^<]+)</)[1]);
+  assert.equal(context.view, 'dashboard');
+  assert.equal(context.storeKey, null);
+  const issued = await f.request(API + '/sso/tickets', { method: 'POST', headers: { ...f.bearer, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ challengeId: context.challengeId, subject: 'viewer-123' }) });
+  assert.equal(issued.status, 201);
+  const ticket = new URLSearchParams(new URL((await issued.json()).data.loginUrl).hash.slice(1)).get('ticket');
+  const exchange = await f.request('/crm/sso/exchange', { method: 'POST', headers: { ...f.sameOrigin, Cookie: pair(start, BINDING).cookie }, body: JSON.stringify({ ticket }) });
+  assert.equal(exchange.status, 200);
+  const headers = { Cookie: pair(exchange, SESSION).cookie };
+  const page = await f.request('/crm/', { headers });
+  assert.equal(page.status, 200);
+  const markup = await page.text();
+  assert.match(markup, /var crmReadOnly = true/);
+  assert.match(markup, /巡检总览/);
+  for (const match of markup.matchAll(/<script(?: [^>]*)?>([\s\S]*?)<\/script>/g)) {
+    new vm.Script(match[1]);
+    assert.ok(page.headers.get('content-security-policy').includes("'sha256-" + crypto.createHash('sha256').update(match[1]).digest('base64') + "'"));
+  }
+  // Opt-in real rendering against the same isolated production server. The
+  // browser may contact only the synthetic origin, fulfilled over loopback.
+  if (process.env.AMZGUARD_TEST_BROWSER === '1') {
+    const { chromium } = createRequire(import.meta.url)('playwright');
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const context = await browser.newContext();
+      await context.addCookies([{ name: SESSION, value: headers.Cookie.split('=')[1], url: ORIGIN, secure: true, httpOnly: true, sameSite: 'Lax' }]);
+      const errors = [], failures = [];
+      let expireBrowser = false;
+      await context.route('**/*', async route => {
+        const req = route.request(), url = new URL(req.url());
+        assert.equal(url.origin, ORIGIN, 'unexpected external browser request');
+        if (expireBrowser) return route.fulfill({ status: 401, contentType: 'application/json', body: '{}' });
+        const result = await f.request(url.pathname + url.search, { method: req.method(), headers: await req.allHeaders(), body: req.postDataBuffer() || undefined });
+        if (result.status >= 400) failures.push(url.pathname + ':' + result.status);
+        await route.fulfill({ status: result.status, headers: Object.fromEntries(result.headers), body: Buffer.from(await result.arrayBuffer()) });
+      });
+      const page = await context.newPage();
+      page.on('pageerror', error => errors.push(error.message));
+      page.on('console', msg => { if (msg.type() === 'error' && !expireBrowser) errors.push(msg.text()); });
+      await page.goto(ORIGIN + '/crm/');
+      await page.waitForFunction(() => document.querySelector('#heroSub').textContent.includes('3 家店铺'));
+      for (const view of ['store-risk', 'customer-voice', 'product-status', 'ads-watch', 'system', 'overview']) {
+        await page.locator('nav [data-view="' + view + '"]').click();
+        assert.equal(await page.locator('[data-view-panel="' + view + '"]').isVisible(), true);
+      }
+      for (const view of ['intelligence', 'upload', 'stores', 'users']) assert.equal(await page.locator('nav [data-view="' + view + '"]').isVisible(), false);
+      await page.locator('#refresh').click();
+      assert.deepEqual(failures, []);
+      assert.deepEqual(errors, []);
+      await page.screenshot({ path: path.join(os.tmpdir(), 'amz-crm-dashboard-browser.png'), fullPage: true });
+      expireBrowser = true;
+      await page.locator('#refresh').click();
+      await page.getByText('会话已失效，请从 CRM 重新进入。', { exact: true }).waitFor();
+      assert.deepEqual(errors, []);
+      console.log('CRM dashboard browser: six workspaces rendered; hidden write entries; session expiry clears panel; no page errors');
+    } finally { await browser.close(); }
+  }
+  const status = await f.request('/crm/dashboard/api/status', { headers });
+  assert.equal(status.status, 200);
+  assert.deepEqual((await status.json()).stores.map(s => s.key).sort(), ['US-A', 'US-B', 'US-X']);
+  for (const route of ['/api/progress', '/api/ui-config', '/api/ads-rules', '/api/check/reviews', '/api/history/reviews?store=US-X&date=' + new Date().toISOString().slice(0, 10)]) {
+    const r = await f.request('/crm/dashboard' + route, { headers });
+    assert.equal(r.status, 200, route + ' ' + await r.clone().text());
+  }
+  for (const route of ['/api/users', '/api/admin/stores', '/api/product-uploads', '/api/intelligence', '/api/ingest', '/api/account/password']) {
+    assert.equal((await f.request('/crm/dashboard' + route, { headers })).status, 403);
+    assert.equal((await f.request('/crm/dashboard' + route, { method: 'POST', headers: { ...headers, ...f.sameOrigin }, body: '{}' })).status, 405);
+    assert.equal((await f.request(route, { headers })).status, route === '/api/ingest' ? 405 : 401);
+  }
+  assert.equal((await f.request(API + '/stores', { headers })).status, 403);
+  const legacy = await f.login();
+  assert.equal((await f.request('/crm/dashboard/api/status', { headers: { Cookie: legacy.session.cookie } })).status, 403);
+  assert.equal((await f.request('/crm/dashboard/api/status', { headers: f.bearer })).status, 401);
+  const rows = JSON.parse(fs.readFileSync(f.storesFile)); rows[2].enabled = false;
+  fs.writeFileSync(f.storesFile, JSON.stringify(rows));
+  const changed = await (await f.request('/crm/dashboard/api/status', { headers })).json();
+  assert.deepEqual(changed.stores.map(s => s.key).sort(), ['US-A', 'US-B']);
+  assert.equal((await f.request('/crm/dashboard/api/history/reviews?store=US-X&date=2026-09-14', { headers })).status, 404);
+  assert.equal((await f.request('/crm/dashboard/shot?f=../private.png', { headers })).status, 404);
+  assert.equal((await f.request('/crm/logout', { method: 'POST', headers: { ...headers, ...f.sameOrigin }, body: '{}' })).status, 200);
+  assert.equal((await f.request('/crm/dashboard/api/status', { headers })).status, 401);
 });

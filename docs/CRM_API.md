@@ -30,7 +30,7 @@ API Token 只放在 CRM 后端环境变量或密钥管理系统中，不下发�
 | `GET /api/crm/v1` | 读取授权店铺、九项检查目录 `data.checks`、过期阈值和 `ssoModes` |
 | `GET /api/crm/v1/stores` | 读取店铺数组，每店有 `storeKey`、`storeName`、`market` |
 
-CRM 内部店铺 ID 与监测站的 `storeKey` 是两套标识，需建立明确映射，不能直接互换或仅凭展示名称匹配。每次向 CRM 用户提供数据或签发免密票据前，CRM 后端都要检查该用户的店铺权限。
+CRM 内部店铺 ID 与监测站的 `storeKey` 是两套标识，需建立明确映射，不能直接互换或仅凭展示名称匹配。每次向 CRM 用户提供某店数据前，CRM 后端都要检查该用户的店铺权限。免密面板不需要店铺映射，按第 5 节检查面板访问权限。
 
 接口只返回当前 Token 获准访问且已启用的店铺。新增店铺需另行授权；停用后不可读取；改展示名称不改变 `storeKey`。
 
@@ -181,17 +181,17 @@ GET /api/crm/v1/stores/{storeKey}/checks/{checkId}/data?runId={runId}&snapshotId
 
 ## 5. 免密跳转（可选）
 
-当前 CRM 使用 HTTP 页面和 Bearer 登录，请接入**弹窗模式**。CRM 负责用户与店铺授权，监测站负责一次性票据和单店只读会话。后端取数不依赖免密功能。
+当前 CRM 使用 HTTP 页面和 Bearer 登录，请接入**弹窗模式**。默认进入我们的巡检面板，可切换查看全部已启用店铺，无需传店铺或建立店铺映射。CRM 后端负责确认当前用户有权查看整个巡检面板，监测站负责一次性票据和只读会话。后端取数不依赖免密功能。
 
 ### 第一步：CRM 页面打开监测窗口
 
 先注册 `message` 监听，再在用户点击时同步 `window.open`，不要先等待异步请求。每次打开生成一个 32 字节随机数，编码为 43 字符 base64url，作为 `requestId`。HTTP 页面可用 `crypto.getRandomValues`，不要依赖仅安全上下文可用的 `crypto.randomUUID`。
 
 ```http
-GET /crm/sso/bridge?storeKey=XCAI&view=results&requestId={requestId}
+GET /crm/sso/bridge?requestId={requestId}
 ```
 
-`storeKey/view/requestId` 必填；`view` 为 `results` 或 `data`；可选 `checkId` 使用第 2 节标识。`checkId/view` 只决定初始页面，会话可读取该店全部九项检查。
+只需 `requestId`。省略 `storeKey/view/checkId` 即进入面板；也可显式传 `view=dashboard`。不能把无效或空字符串店铺 key 当作默认入口。
 
 不要设置会切断 opener 的 `noopener/noreferrer`，不要嵌入 iframe。页面或代理的 `Cross-Origin-Opener-Policy: same-origin` 也可能切断窗口关系，接入页需使用可保留弹窗关系的策略。
 
@@ -205,15 +205,15 @@ GET /crm/sso/bridge?storeKey=XCAI&view=results&requestId={requestId}
   "version": 1,
   "requestId": "<本次打开生成的 requestId>",
   "challengeId": "<监测站生成的 challengeId>",
-  "storeKey": "XCAI",
-  "view": "results",
+  "storeKey": null,
+  "view": "dashboard",
   "checkId": null
 }
 ```
 
-CRM 页面须核对 `event.origin === 'https://amzcheck.pc51.com'`、`event.source` 是本次窗口、`version === 1`，并核对 `requestId` 和店铺/页面与本次操作一致。记录这次 `challengeId` 后，仅处理一次握手，再通过 CRM 自己的已认证请求链路调用后端。
+CRM 页面须核对 `event.origin === 'https://amzcheck.pc51.com'`、`event.source` 是本次窗口、`version === 1`，并核对本次 `requestId`、`view === 'dashboard'`、`storeKey === null`、`checkId === null`。记录这次 `challengeId` 后，仅处理一次握手，再通过 CRM 自己的已认证请求链路调用后端。
 
-CRM 后端独立检查当前用户已登录、可以查看目标店铺，再携带专用 API Token 签票：
+CRM 后端独立检查当前用户已登录、有权查看全部店铺的巡检面板，再携带专用 API Token 签票：
 
 ```http
 POST /api/crm/v1/sso/tickets
@@ -224,14 +224,11 @@ Content-Type: application/json
 ```json
 {
   "challengeId": "<收到的 challengeId>",
-  "subject": "crm-user-123",
-  "storeKey": "XCAI",
-  "view": "results",
-  "checkId": null
+  "subject": "crm-user-123"
 }
 ```
 
-`storeKey/checkId/view` 必须与握手一致。`subject` 由 CRM 后端从真实用户身份生成，使用稳定、不含个人信息的用户标识，长度 1～128 字符，无首尾空白或控制字符；不要信任前端提交的用户身份或角色。正文最多 8192 字节，不接受压缩或未知字段。
+默认面板签票只需 `challengeId` 与 `subject` 两个字段；不要转发前端提交的店铺、角色或跳转地址。`subject` 由 CRM 后端从真实用户身份生成，使用稳定、不含个人信息的用户标识，长度 1～128 字符，无首尾空白或控制字符；不要信任前端提交的用户身份或角色。正文最多 8192 字节，不接受压缩或未知字段。
 
 成功返回 **201**，正文的 `data` 含 `loginUrl/expiresAt/singleUse`。保留原样 `loginUrl`，不要拼接任意跳转地址。当前 CRM 的请求封装会重试部分失败，签票这一请求须关闭自动重试。
 
@@ -259,20 +256,24 @@ CRM 鉴权或签票失败时，发送 `{type:'amzguard:crm:error',version:1,requ
 |---|---|
 | 握手 | 120 秒，绑定发起浏览器；同一浏览器一次完成一个握手，同时打开多个窗口可能使较早绑定失效 |
 | 票据 | 一次有效，最长 60 秒且不超过握手期限；跨浏览器和重放均拒绝 |
-| 只读会话 | 30 分钟，不自动续期，只授权一家店铺；过期后从 CRM 重新进入 |
+| 只读会话 | 30 分钟，不自动续期；默认可查看全部已启用店铺的巡检面板，过期后从 CRM 重新进入 |
 | 关闭窗口、超时或响应丢失 | 由用户重新发起握手，不自动重试签票或兑换 |
-| CRM 退出/撤销用户权限 | 不会主动撤销已发出的监测会话，最长保留至其 30 分钟到期；监测站停用店铺或撤销店铺授权会立即阻止读取 |
+| CRM 退出/撤销用户权限 | 不会主动撤销已发出的监测会话，最长保留至其 30 分钟到期；监测站停用店铺后面板不再展示该店；新增并启用店铺会自动出现在面板中 |
 | 监测站重启/修改入站认证配置 | 握手、票据和会话失效；改展示名/页面设置不会清空会话。当前认证状态为单进程内存，不能任意分发到多个实例 |
 
 API Token 不进入窗口消息；CRM 用户 Token 留在 CRM 原有请求链路，不交给监测站。`loginUrl` 固定为 `https://amzcheck.pc51.com/crm/sso#ticket=...`，不记录票据。HTTP CRM 页面及原有登录请求仍受 HTTP 传输限制，监测站 API 和兑换始终要求 HTTPS。
 
-监测页自行调用 `/crm/session`、`/crm/sso/exchange`、`/crm/logout`；兑换和退出使用同源 JSON POST，退出正文为 `{}`。监测会话与 Dashboard 账户隔离，不能调用管理、上传、补跑或竞品接口。数据 API 同时收到 Authorization 和 Cookie 时，以 Authorization 为准，错误 Bearer 不回退到 Cookie；`/crm`、`/crm/`、`/crm/session` 只认独立 CRM Cookie。此握手是本项目协议，不是 OAuth/OIDC。
+监测页自行调用 `/crm/session`、`/crm/sso/exchange`、`/crm/logout`；兑换和退出使用同源 JSON POST，退出正文为 `{}`。面板复用现有界面，显示巡检总览、店铺风险、客户声音、商品状态、广告值守和系统保障，可查看已保存明细、历史及关联截图。不能管理店铺/用户、修改广告规则、上传、补跑或查看竞品情报。页面通过独立的 `/crm/dashboard/` 只读路径加载数据，不取得 Dashboard 账户角色。此内部路径由页面自行调用，CRM 后端取数仍使用第 1～4 节的 API。面板请求按 IP 每分钟最多 180 次；刷新仅读取已保存数据。面板会话不能用来调用机器数据 API；API Token 的店铺白名单仍保持原范围。旧单店会话的数据 API 同时收到 Authorization 和 Cookie 时，以 Authorization 为准，错误 Bearer 不回退到 Cookie；`/crm`、`/crm/`、`/crm/session` 只认独立 CRM Cookie。此握手是本项目协议，不是 OAuth/OIDC。
 
 ### 以后需要 HTTPS 重定向时
 
-仅在 CRM 已有可识别当前用户的 HTTPS 回调时使用：监测站配置固定回调，CRM 链接进入 `/crm/sso/start?storeKey=XCAI&view=results`，监测站通过 303 带回 `challengeId/storeKey/view` 和可选 `checkId`。CRM 回调鉴权后调用同一个签票接口，再将浏览器 303 跳到 `data.loginUrl`；监测完成页先清除 fragment，再同源兑换。
+仅在 CRM 已有可识别当前用户的 HTTPS 回调时使用：监测站配置固定回调，CRM 链接进入 `/crm/sso/start`，监测站通过 303 带回 `challengeId/view=dashboard`。CRM 回调鉴权后调用同一个签票接口，再将浏览器 303 跳到 `data.loginUrl`；监测完成页先清除 fragment，再同源兑换。
 
 HTTP 页面的 localStorage Token 不会随导航自动带给 HTTPS 回调。回调须有有效域名证书，不能用普通页面地址代替，也不关闭 TLS 校验。未配置时该入口返回 503，不会自动切换到弹窗。现有 Node.js 22+ 回调参考组件不属于 Laravel CRM 的接入依赖。
+
+### 旧单店链接兼容
+
+旧入口仍可传 `storeKey=XCAI&view=results`（或 `data`），并可带 `checkId`；签票时须原样传回这三个字段。此时仍是原来的单店只读页，受 API Token 的店铺白名单限制，不能进入全部店铺面板。新接入直接使用上面的默认方式即可。
 
 ## 6. 监测站配置
 
@@ -289,6 +290,6 @@ HTTP 页面的 localStorage Token 不会随导航自动带给 HTTPS 回调。回
 
 六项全空为关闭，启用时前四项必须配齐，部分配置无效会拒绝启动。后两项分别启用重定向和弹窗，都留空仍可后端取数。`ssoModes` 表示已配置模式，旧版本可能没有此字段；`ssoAvailable=true` 不代表 CRM 已完成接入。
 
-可读店铺必须同时在管理员维护的启用名单和 Token 授权名单中。新增店铺不自动扩大授权；管理文件损坏时拒绝服务，不回退旧名单。修改 env 后重启 Dashboard 并核对能力、店铺接口；保留现有 env、运行数据和定时器状态，不重跑初始化器，也不启动巡检或通知。入站配置与出站 `CRM_ENDPOINT/CRM_TOKEN` 独立，不改动 `channels.env`。
+机器数据 API 和旧单店免密的可读店铺必须同时在管理员维护的启用名单和 Token 授权名单中；新增店铺不自动扩大这两类授权。默认免密面板独立展示全部已启用店铺，无需维护店铺白名单；管理文件损坏时拒绝服务，不回退旧名单。修改 env 后重启 Dashboard 并核对能力、店铺接口；保留现有 env、运行数据和定时器状态，不重跑初始化器，也不启动巡检或通知。入站配置与出站 `CRM_ENDPOINT/CRM_TOKEN` 独立，不改动 `channels.env`。
 
 当前 CRM 只读核对结果为 Vue 3.5.34、Vue Router 4.6.4、Pinia 2.3.1、Element Plus 2.14.0、Vite 构建和 PHP / Laravel；PHP、Laravel 准确版本未公开。接口使用标准 HTTPS、Bearer 和 JSON，不要求特定 SDK。交付的是监测站接口，CRM 的按钮和用户权限逻辑由 CRM 开发者完成；上线前用真实获准用户核对取数、越权拒绝、过期重进与退出。离线测试通过不代表 CRM 已完成联调，也不代表 Amazon 数据刚更新。

@@ -647,7 +647,7 @@ function evidenceTime(value) {
   return Number.isFinite(date.getTime())?bjHuman(date)+' 北京时间':'时间未记录';
 }
 
-function serveEvidenceViewer(res, rel) {
+function serveEvidenceViewer(res, rel, prefix = '') {
   if (!shotUrl(rel)) return json(res, 404, { ok: false, error: 'evidence not found' });
   const context = evidenceContext(rel);
   if (!context) return json(res, 404, { ok: false, error: 'evidence is not bound to a stored result' });
@@ -657,11 +657,11 @@ function serveEvidenceViewer(res, rel) {
   const pageNotice=context.review?`<div class="notice"><b>${page?`第 ${page.page} / ${page.pages} 页原始截图`:'评论原始截图（页码未记录）'}</b> · 采集时间：${escapeHtml(evidenceTime(page?.capturedAt||context.checkedAt))}<br>评价发表日期${page?.newestDate?`：${escapeHtml(page.oldestDate)} 至 ${escapeHtml(page.newestDate)}`:'：以原始评论为准'}。采集时间与评价发表日期含义不同。${page?.legacy?'<br><b>这份旧报告只保存了最后一页截图，不能用它代表最新差评；最新评价请查看结构化明细。</b>':''}</div>`:'';
   const pageLinks=context.pages.filter(p=>p.screenshot&&shotUrl(p.screenshot)).map(p=>{
     const relative=new URL(shotUrl(p.screenshot),'http://localhost').searchParams.get('f');
-    return `<a href="/evidence?f=${encodeURIComponent(relative)}" ${p.page===page?.page?'aria-current="page"':''}>第 ${p.page} / ${p.pages} 页${p.newestDate?' · '+escapeHtml(p.newestDate):''}</a>`;
+    return `<a href="${prefix}/evidence?f=${encodeURIComponent(relative)}" ${p.page===page?.page?'aria-current="page"':''}>第 ${p.page} / ${p.pages} 页${p.newestDate?' · '+escapeHtml(p.newestDate):''}</a>`;
   }).join('　');
   const body = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(context.storeKey)} · 原始采集证据</title><style>
   *{box-sizing:border-box}body{margin:0;background:#eef1ee;color:#14201c;font:14px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}.bar{position:sticky;top:0;z-index:2;background:#14221d;color:#fff;padding:14px 20px;box-shadow:0 3px 18px rgba(0,0,0,.18)}.top{max-width:1200px;margin:auto;display:flex;align-items:center;gap:16px}.mark{background:#c9f36a;color:#193014;border-radius:8px;padding:7px 10px;font-weight:850}.identity{min-width:0}.identity b{display:block;font-size:16px}.identity small{color:#aebcb6}.meta{margin-left:auto;text-align:right;font-size:11px;color:#c9d3cf}.notice{max-width:1200px;margin:14px auto 10px;padding:11px 14px;background:#fff8df;border:1px solid #ead89b;border-radius:9px;color:#5b4c16}.notice b{color:#2e3b35}.canvas{max-width:1200px;margin:0 auto 28px;background:#fff;border:1px solid #dfe5e0;border-radius:10px;overflow:auto;box-shadow:0 12px 35px rgba(20,34,29,.08)}.canvas img{display:block;width:100%;height:auto}.actions{max-width:1200px;margin:0 auto 10px;text-align:right}.actions a{color:#276a4d;text-decoration:none;font-weight:700;font-size:12px}@media(max-width:650px){.bar{padding:11px}.top{align-items:flex-start}.meta{font-size:9px}.notice,.canvas,.actions{border-radius:0;margin-left:0;margin-right:0}.notice{margin-top:8px}.identity b{font-size:14px}}
-  </style></head><body><header class="bar"><div class="top"><span class="mark">证据</span><div class="identity"><b>${escapeHtml(context.storeName)} · ${escapeHtml(context.storeKey)}</b><small>${escapeHtml(context.checkTitle)} · 品牌 ${escapeHtml(brandText)}</small></div><div class="meta">证据 ${escapeHtml(evidenceId)}<br>采集：${escapeHtml(evidenceTime(context.checkedAt))}</div></div></header>${pageNotice}${pageLinks?`<nav class="actions" aria-label="评论截图分页">${pageLinks}</nav>`:''}<div class="notice"><b>原始只读截图，未添加水印或修改像素。</b> Amazon Customer Reviews 原页是品牌级数据，同一品牌授权给多个 Seller 店铺时原始列表可能相同；控制台的业务状态和结构化明细会再按当前店铺的有效 ASIN 清单过滤。请以上方店铺身份、截图内 Amazon 顶栏账户名及控制台“店铺归属”共同核对。</div><div class="actions"><a href="/shot?f=${encodeURIComponent(rel)}" target="_blank" rel="noopener">单独打开原始图片</a></div><main class="canvas"><img src="/shot?f=${encodeURIComponent(rel)}" alt="${escapeHtml(context.storeKey)} 原始采集截图"></main></body></html>`;
+  </style></head><body><header class="bar"><div class="top"><span class="mark">证据</span><div class="identity"><b>${escapeHtml(context.storeName)} · ${escapeHtml(context.storeKey)}</b><small>${escapeHtml(context.checkTitle)} · 品牌 ${escapeHtml(brandText)}</small></div><div class="meta">证据 ${escapeHtml(evidenceId)}<br>采集：${escapeHtml(evidenceTime(context.checkedAt))}</div></div></header>${pageNotice}${pageLinks?`<nav class="actions" aria-label="评论截图分页">${pageLinks}</nav>`:''}<div class="notice"><b>原始只读截图，未添加水印或修改像素。</b> Amazon Customer Reviews 原页是品牌级数据，同一品牌授权给多个 Seller 店铺时原始列表可能相同；控制台的业务状态和结构化明细会再按当前店铺的有效 ASIN 清单过滤。请以上方店铺身份、截图内 Amazon 顶栏账户名及控制台“店铺归属”共同核对。</div><div class="actions"><a href="${prefix}/shot?f=${encodeURIComponent(rel)}" target="_blank" rel="noopener">单独打开原始图片</a></div><main class="canvas"><img src="${prefix}/shot?f=${encodeURIComponent(rel)}" alt="${escapeHtml(context.storeKey)} 原始采集截图"></main></body></html>`;
   res.writeHead(200, {
     'Content-Type': 'text/html; charset=utf-8',
     'Content-Length': Buffer.byteLength(body),
@@ -797,7 +797,7 @@ function readiness() {
 }
 
 /** Build a store-first view: every configured store has one cell for every check. */
-function buildStores(checks) {
+function buildStores(checks, configuredOnly = false) {
   const asinInfo = loadAsins(config);
   const reports = new Map(CHECKS.map((def) => [def.id, readLatest(def.id)?.report || null]));
   const snapshots = new Map(CHECKS.map((def) => [
@@ -810,7 +810,7 @@ function buildStores(checks) {
   // in this dashboard machine's local stores.json yet.
   for (const storeMap of snapshots.values()) {
     for (const [key, snapshot] of storeMap) {
-      if (known.has(key) || disabledStores.has(key)) continue;
+      if (configuredOnly || known.has(key) || disabledStores.has(key)) continue;
       const result = snapshot.results[0] || {};
       known.set(key, {
         key, name: result.storeName || key, id: '', market: result.market || '', host: '', discovered: true,
@@ -1043,11 +1043,11 @@ function runtimeProgress() {
   return safeData(readRuntimeProgress(config.outDir));
 }
 
-function status() {
+function status({ configuredOnly = false } = {}) {
   const schedule = scheduleView();
   const alerts = alertHistory();
   const rollups = CHECKS.map(rollup);
-  const storeRows = buildStores(rollups);
+  const storeRows = buildStores(rollups, configuredOnly);
   const checks = rollups.map((check) => {
     const cells = storeRows.map((store) => store.cells[check.id]);
     const state = worstState(cells.map((cell) => cell.state));
@@ -1218,10 +1218,11 @@ function operationalViews(req) {
   });
 }
 
-function publicReport(checkId) {
+function publicReport(checkId, configuredOnly = false) {
   const def = CHECKS.find((check) => check.id === checkId);
   const effective = def ? latestEffectiveCheck({ outDir: config.outDir, checkId, staleAfterMs: STALE_AFTER_MS }) : null;
   if (!def || !effective) return null;
+  if (configuredOnly) effective.results = effective.results.filter(result => stores.some(store => store.key === (result.storeKey || result.storeName)));
   const report = effective.newest.report;
   const effectiveTotals = effective.results.reduce((totals, result) => {
     totals.total++;
@@ -1926,9 +1927,54 @@ function serveShot(res, rel) {
   res.end(buf);
 }
 
+// Explicit read surface for the shared CRM panel. Never delegate to the local
+// router: even a browser holding an administrator cookie cannot mutate here.
+function crmDashboardRead(req, res, url) {
+  refreshStores();
+  const prefix = '/crm/dashboard';
+  const p = url.pathname.slice(prefix.length);
+  const keys = new Set(stores.map(store => store.key));
+  function mapped(value) {
+    if (Array.isArray(value)) return value.filter(row => !row?.storeKey || keys.has(row.storeKey)).map(mapped);
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, mapped(child)]));
+    if (typeof value === 'string' && /^\/(?:shot|evidence)\?f=/.test(value)) return prefix + value;
+    return value;
+  }
+  const respond = value => json(res, 200, mapped(value));
+  if (p === '/api/status') return respond(status({ configuredOnly: true }));
+  if (p === '/api/progress') return respond(runtimeProgress());
+  if (p === '/api/ui-config') return respond({ ...uiConfig.read(), canManage: false, csrfToken: null });
+  if (p === '/api/ads-rules') return respond({ ok: true, canManage: false, csrf: null,
+    rules: stores.map(store => ({ storeKey: store.key, storeName: store.displayName || store.name || store.key,
+      nameContains: String(store.adsNameContains || ''), configured: Boolean(store.adsNameContains) })) });
+  if (p.startsWith('/api/check/')) {
+    const id = p.slice('/api/check/'.length);
+    if (!CHECK_IDS.has(id)) return json(res, 404, { error: 'unknown check' });
+    const report = publicReport(id, true);
+    return report ? respond(report) : json(res, 404, { error: 'no report yet' });
+  }
+  if (p.startsWith('/api/history/')) {
+    const id = p.slice('/api/history/'.length), storeKey = url.searchParams.get('store');
+    const date = url.searchParams.get('date'), page = Number(url.searchParams.get('page') || 1);
+    const runId = url.searchParams.get('runId') || '';
+    if (!CHECK_IDS.has(id) || !keys.has(storeKey)) return json(res, 404, { error: 'unknown check or store' });
+    if (!validHistoryDate(date) || !Number.isSafeInteger(page) || page < 1 || page > 100000 || runId.length > 200) return json(res, 400, { error: 'invalid history selection' });
+    const history = publicHistory(id, storeKey, date, runId, page);
+    return history ? respond(history) : json(res, 404, { error: 'run not found' });
+  }
+  if (p === '/shot' || p === '/evidence') {
+    const f = url.searchParams.get('f');
+    const context = f && evidenceContext(f);
+    if (!context || !keys.has(context.storeKey)) return json(res, 404, { error: 'evidence unavailable' });
+    return p === '/shot' ? serveShot(res, f) : serveEvidenceViewer(res, f, prefix);
+  }
+  return json(res, 403, { error: 'read-only monitoring dashboard' });
+}
+
 // CRM sessions are handled entirely before local Dashboard authentication.
 // Re-read only the non-secret store registry to honor removals/disabled stores.
 const crmRequest = createCrmHttp({ outDir: config.outDir, staleAfterMs: STALE_AFTER_MS,
+  dashboardRead: crmDashboardRead,
   stores: () => storeRegistry.read().stores.map(store => ({
     key: store.key, name: store.displayName || store.name || store.key, market: store.market, enabled: store.enabled,
   })), isSecureRequest, clientIp });

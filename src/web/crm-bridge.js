@@ -43,7 +43,7 @@ function crmBridge() {
     if (opener.closed || Date.now() >= deadline) { fail('握手已结束，请关闭窗口后从 CRM 重新进入。'); return; }
     accepted = true;
     window.removeEventListener('message', receive);
-    if (!ticketMessage) { fail('CRM 未完成授权，请关闭窗口并核对登录状态与店铺权限。'); return; }
+    if (!ticketMessage) { fail('CRM 未完成授权，请关闭窗口并核对访问权限。'); return; }
     const prefix = context.publicOrigin + '/crm/sso#ticket=';
     if (typeof data.loginUrl !== 'string' || !data.loginUrl.startsWith(prefix)
       || !/^[A-Za-z0-9_-]{43}$/.test(data.loginUrl.slice(prefix.length))) {

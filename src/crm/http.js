@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { renderDashboard } from '../web/dashboard.js';
 import fs from 'node:fs';
 import { createCrmAccess } from '../lib/crm-access.js';
 import { createCrmReadApi } from '../lib/crm-read-api.js';
@@ -102,7 +103,7 @@ function exactFields(value, fields) {
 
 /** Owns only /crm and /api/crm namespaces; never falls through to Dashboard auth. */
 export function createCrmHttp({ outDir, stores, staleAfterMs, env = process.env,
-  isSecureRequest, clientIp = req => req.socket.remoteAddress, now = Date.now } = {}) {
+  dashboardRead, isSecureRequest, clientIp = req => req.socket.remoteAddress, now = Date.now } = {}) {
   const currentStores = () => typeof stores === 'function' ? stores() : stores;
   const access = createCrmAccess({ env, stores: currentStores, now });
   const rates = new Map();
@@ -153,6 +154,7 @@ export function createCrmHttp({ outDir, stores, staleAfterMs, env = process.env,
   }
 
   function scopes(principal) {
+    if (principal.view === 'dashboard') throw error(403, 'CRM_DASHBOARD_ONLY', 'Use the read-only dashboard');
     const keys = principal.kind === 'crm-readonly' ? [principal.storeKey] : access.publicConfig().storeKeys;
     return keys.filter(key => { access.authorizeStore(principal, key); return true; });
   }
@@ -167,7 +169,7 @@ export function createCrmHttp({ outDir, stores, staleAfterMs, env = process.env,
       apiVersion: API_VERSION, requestId, generatedAt: new Date(now()).toISOString(), ...body,
     });
     try {
-      limit(req, res, p.startsWith('/api/') ? 'api' : 'browser', p.startsWith('/api/') ? 120 : 60);
+      limit(req, res, p.startsWith('/crm/dashboard/') ? 'dashboard' : p.startsWith('/api/') ? 'api' : 'browser', p.startsWith('/crm/dashboard/') ? 180 : p.startsWith('/api/') ? 120 : 60);
       const settings = access.publicConfig();
       if (!settings.enabled) throw error(503, 'CRM_DISABLED', 'CRM read integration is not configured');
       canonical(req, settings);
@@ -226,6 +228,14 @@ export function createCrmHttp({ outDir, stores, staleAfterMs, env = process.env,
         res.setHeader('Set-Cookie', cookie(SESSION_COOKIE, '', 0));
         success(200, { data: { loggedOut: true } }); return true;
       }
+      if (p.startsWith('/crm/dashboard/')) {
+        method(req, res, 'GET');
+        const session = access.authenticateSession(cookies(req)[SESSION_COOKIE]);
+        if (session.view !== 'dashboard') throw error(403, 'CRM_DASHBOARD_REQUIRED', 'Dashboard session required');
+        if (!dashboardRead) throw error(503, 'CRM_DASHBOARD_UNAVAILABLE', 'Dashboard unavailable');
+        await dashboardRead(req, res, url);
+        return true;
+      }
       if (['/crm', '/crm/', '/crm/session'].includes(p)) {
         method(req, res, 'GET');
         if (url.search) throw error(400, 'CRM_INVALID_QUERY', 'This page does not accept query parameters');
@@ -233,6 +243,12 @@ export function createCrmHttp({ outDir, stores, staleAfterMs, env = process.env,
         if (p === '/crm/session') {
           success(200, { data: { storeKey: session.storeKey, checkId: session.checkId, view: session.view,
             expiresAt: new Date(session.expiresAt).toISOString(), readOnly: true } });
+        } else if (session.view === 'dashboard') {
+          // Same shell as the local panel, with isolated read endpoints.
+          const page = renderDashboard({ crmReadOnly: true });
+          const scripts = [...page.matchAll(/<script(?: [^>]*)?>([\s\S]*?)<\/script>/g)].map(match => `'sha256-${hash(match[1])}'`);
+          res.setHeader('Content-Security-Policy', `default-src 'none'; script-src ${scripts.join(' ')}; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`);
+          send(res, 200, page, 'text/html; charset=utf-8');
         } else html(res, CRM_PORTAL_HTML, CRM_PORTAL_SCRIPT);
         return true;
       }
