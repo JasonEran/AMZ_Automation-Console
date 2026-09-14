@@ -109,6 +109,14 @@ export const DEFAULTS = {
     timeoutMs: 30000,
     retries: 2,
   },
+  productUpload: {
+    results: {
+      enabled: true,
+      intervalMinutes: 5,
+      maxAgeHours: 72,
+      timeoutMs: 120000,
+    },
+  },
   schedule: {
     timezone: 'Asia/Shanghai',
     slots: [

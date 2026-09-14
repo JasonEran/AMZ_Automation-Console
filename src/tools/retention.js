@@ -48,12 +48,16 @@ function walk(root, visit) {
 
 export function retentionClass(relative) {
   const posix = relative.split(path.sep).join('/');
+  if (/^product-uploads\/jobs\/upl_[a-f0-9]{32}\/diagnostics\/.+/.test(posix)) return 'evidence';
+  if (/^product-uploads\/jobs\/upl_[a-f0-9]{32}\/processing\/reports\/.+/.test(posix)) return 'evidence';
+  if (/^product-uploads\/jobs\/upl_[a-f0-9]{32}\/processing\/current\.json$/.test(posix)) return 'keep';
   // Baselines and the CRM idempotency ledger are durable state. Channel JSONL
   // files are audit trails and must not grow forever merely because they live
   // under channels/.
   if (/^runtime\/(?:ads-monitoring|ads-rules|users|store-registry|ui-config)\.json$/.test(posix)
       || /^state\//.test(posix)
       || /^channels\/crm\/ledger\.json$/.test(posix)
+      || /^product-uploads\/jobs\/upl_[a-f0-9]{32}\/(?:record|reset)\.json$/.test(posix)
       || /(^|\/)latest\.json$/.test(posix)) return 'keep';
   if (/^product-uploads\/jobs\/[^/]+\/payload\./.test(posix)) return 'uploadPayload';
   if (/^product-uploads\/(?:jobs|audit)\//.test(posix)) return 'audit';

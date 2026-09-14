@@ -31,13 +31,24 @@ import {
   PRODUCT_UPLOAD_MAX_BYTES,
   confirmProductUpload,
   inspectProductUploadFile,
+  productUploadMode,
+  productUploadStoreMatches,
+  PRODUCT_UPLOAD_MODES,
   productUploadEnabled,
   productUploadJobInventory,
+  productUploadResetInfo,
+  productUploadResetPhrase,
   publicProductUploadJob,
   readProductUploadJob,
+  resetProductUploadDuplicate,
   stageProductUpload,
   summarizeProductUploadJobs,
 } from './lib/product-upload.js';
+import {
+  publicProductUploadProcessing,
+  requestProductUploadProcessing,
+} from './lib/product-upload-processing.js';
+import { readProductUploadReport, mergeProductUploadReportSummary } from './lib/product-upload-report.js';
 import { bjHuman, bjIso, bjParts, detectSlot, parseHHMM } from './lib/time.js';
 import { DASHBOARD_HTML } from './web/dashboard.js';
 import { intelligenceRequest } from './intelligence/http.js';
@@ -186,7 +197,7 @@ function parseCookies(req) {
 
 function rolesForUser(user) {
   const roles = [user.role === 'admin' ? 'dashboard-admin' : 'dashboard-operator'];
-  if (productUploadAuthorizedUser(user.username)) roles.push('product-upload-admin');
+  if (user.role === 'admin' && productUploadAuthorizedUser(user.username)) roles.push('product-upload-admin');
   return roles;
 }
 
@@ -237,7 +248,10 @@ function sessionClaims(req) {
 }
 
 function validProductUploadRole(req) {
-  return sessionClaims(req)?.roles?.includes('product-upload-admin') === true;
+  const claims = sessionClaims(req);
+  if (!claims?.roles?.includes('product-upload-admin')) return false;
+  const user = userStore.get(claims.username);
+  return user?.enabled === true && user.role === 'admin' && productUploadAuthorizedUser(user.username);
 }
 
 function validAdminRole(req) {
@@ -1451,13 +1465,54 @@ function productUploadAuthorizedUser(username = '') {
 
 function uploadConfirmationChallenge(job) {
   return crypto.createHmac('sha256', DASHBOARD_SESSION_SECRET).update([
-    'product-upload-v1', job.id, job.store.key, job.file.sha256, job.file.size, job.expiresAt,
+    'product-upload-v2', job.id, job.store.key, job.file.sha256, job.file.size, job.expiresAt, productUploadMode(job.mode),
   ].join(':')).digest('base64url');
 }
 
-function publicUploadJob(job) {
+function uploadResetChallenge(job) {
+  return crypto.createHmac('sha256', DASHBOARD_SESSION_SECRET).update(JSON.stringify([
+    'product-upload-reset-v1', job.id, job.store.key, job.file.sha256, job.file.size,
+    job.state, job.createdAt, job.updatedAt, productUploadMode(job.mode),
+  ])).digest('base64url');
+}
+
+function publicUploadJob(job, authorized = false) {
   const value = publicProductUploadJob(job);
+  try {
+    value.processingRefresh = publicProductUploadProcessing({ outDir: config.outDir, jobId: job.id, config });
+    const store = stores.find(candidate => candidate.key === job.store.key);
+    value.processingRefresh.eligible &&= authorized && productUploadStoreMatches(job, store);
+    const snapshot = value.processingRefresh.snapshot;
+    if (snapshot) {
+      value.resultCenter.observedAt = snapshot.observedAt;
+      value.resultCenter.processing = { availability: 'AVAILABLE', status: snapshot.status };
+      const counts = snapshot.counts;
+      value.resultCenter.counts = { ...counts, availability: ['success', 'failed', 'warning'].every(key => counts[key] !== null)
+        ? 'AVAILABLE' : Object.values(counts).some(count => count !== null) ? 'PARTIAL' : 'NOT_AVAILABLE' };
+    }
+    {
+      try {
+        const report = readProductUploadReport({ outDir: config.outDir, jobId: job.id });
+        if (report && authorized) value.resultCenter.processingReport = { ...report, availability: 'AVAILABLE',
+          url: `/api/product-uploads/report?jobId=${encodeURIComponent(job.id)}` };
+        const merged = mergeProductUploadReportSummary(value.resultCenter, snapshot, report);
+        value.resultCenter = merged.center;
+        if (merged.conflict) value.processingRefresh.problem = 'Amazon 状态页与处理报告的数量不一致，请核对报告；系统不会将冲突判为成功。';
+      } catch { value.reportProblem = '处理报告无法安全核对，已保留批次状态；请重新获取结果。'; }
+    }
+  } catch {
+    value.processingRefresh = { eligible: false, snapshot: null, problem: '处理结果记录无法核对，请联系管理员；原上传回执保持不变。' };
+  }
   if (job.state === 'STAGED') value.confirmationChallenge = uploadConfirmationChallenge(job);
+  try {
+    value.reset = productUploadResetInfo({ outDir: config.outDir, job });
+    value.reset.eligible &&= authorized;
+    if (value.reset.eligible) {
+      value.reset.confirmationChallenge = uploadResetChallenge(job);
+    }
+  } catch {
+    value.reset = { eligible: false, resetAt: null, problem: '重置记录异常，请先核对账本' };
+  }
   return value;
 }
 
@@ -1503,12 +1558,17 @@ function hasUploadCapacity(storeKey, declaredBytes) {
 
 function productUploadApi(url, authorized = false) {
   const inventory = productUploadJobInventory({ outDir: config.outDir, limit: 10_000 });
+  const jobs = inventory.jobs.map(job => publicUploadJob(job, authorized));
+  const includeReset = url.searchParams.get('includeReset') === '1';
+  const resetCount = jobs.filter(job => job.reset.resetAt).length;
   const storeFilter = String(url.searchParams.get('store') || '');
   const stateFilter = String(url.searchParams.get('state') || '');
-  const filteredJobs = inventory.jobs.filter((job) =>
-    (!storeFilter || job.store?.key === storeFilter)
+  const filteredJobs = jobs.filter((job) =>
+    (includeReset || !job.reset.resetAt)
+    && (!storeFilter || job.store?.key === storeFilter)
     && (!stateFilter || job.state === stateFilter),
   );
+  const filteredIds = new Set(filteredJobs.map(job => job.id));
   const pageSize = Math.max(1, Math.min(50, Number(url.searchParams.get('pageSize')) || 10));
   const pageCount = Math.max(1, Math.ceil(filteredJobs.length / pageSize));
   const page = Math.max(1, Math.min(pageCount, Number(url.searchParams.get('page')) || 1));
@@ -1517,6 +1577,7 @@ function productUploadApi(url, authorized = false) {
     ok: true,
     enabled: PRODUCT_UPLOAD_ENABLED,
     authorized,
+    modes: PRODUCT_UPLOAD_MODES,
     csrf: '',
     limits: {
       maxBytes: PRODUCT_UPLOAD_MAX_BYTES,
@@ -1526,10 +1587,14 @@ function productUploadApi(url, authorized = false) {
     stores: stores.filter((store) => store.enabled !== false).map((store) => ({
       key: String(store.key), name: String(store.displayName || store.name || store.key), market: String(store.market || 'US'),
     })),
-    jobs: filteredJobs.slice(start, start + pageSize).map(publicUploadJob),
-    resultSummary: summarizeProductUploadJobs(filteredJobs),
+    jobs: filteredJobs.slice(start, start + pageSize),
+    resultSummary: summarizeProductUploadJobs(inventory.jobs.filter(job => filteredIds.has(job.id)).map(job => ({
+      ...job, result: { ...job.result, center: jobs.find(value => value.id === job.id)?.resultCenter },
+    }))),
+    resetCount,
+    includeReset,
     pagination: { page, pageSize, pageCount, total: filteredJobs.length, totalAll: inventory.jobs.length },
-    corrupt: inventory.corrupt,
+    corrupt: inventory.corrupt + jobs.filter(job => job.reset.problem).length,
   };
 }
 
@@ -1558,10 +1623,11 @@ async function stageProductUploadRequest(req, res) {
   const originalName = decodeHeader(req.headers['x-amzguard-file-name']);
   let buffer, configurationLease;
   try {
+    const mode = productUploadMode(req.headers['x-amzguard-upload-mode']);
     try { buffer = await readBufferBody(req, PRODUCT_UPLOAD_MAX_BYTES); }
     catch { return json(res, 400, { ok: false, error: 'invalid or oversized upload body' }); }
     if (!validProductUploadRole(req)) return json(res, 403, { ok: false, error: 'product upload role required' });
-    inspectProductUploadFile({ originalName, buffer });
+    inspectProductUploadFile({ originalName, buffer, mode });
     // A slow upload body must not stage against a store binding changed while
     // it was in transit. Hold the collector lease only for this local commit.
     configurationLease = acquireRunLock({ outDir: config.outDir, label: 'product-upload-staging' });
@@ -1571,7 +1637,7 @@ async function stageProductUploadRequest(req, res) {
       return json(res, 409, { ok: false, error: '店铺绑定或启用状态已变化，请重载并重新选择文件' });
     }
     const job = stageProductUpload({
-      outDir: config.outDir, store: currentStore, originalName, buffer,
+      outDir: config.outDir, store: currentStore, originalName, buffer, mode,
       actor: operatorIdentity(req),
     });
     return json(res, 201, { ok: true, job: publicUploadJob(job) });
@@ -1594,20 +1660,17 @@ async function confirmProductUploadRequest(req, res) {
   if (!/^application\/json(?:\s*;|$)/i.test(String(req.headers['content-type'] || ''))) {
     return json(res, 415, { ok: false, error: 'application/json required' });
   }
-  const failure = failureState(req);
-  if (failure.blocked) return json(res, 429, { ok: false, error: 'reauthentication temporarily limited' });
   let payload;
   try { payload = JSON.parse(await readBody(req, 16 * 1024)); }
   catch { return json(res, 400, { ok: false, error: 'invalid JSON payload' }); }
   if (!validProductUploadRole(req)) return json(res, 403, { ok: false, error: 'product upload role required' });
-  const username = sessionClaims(req)?.username || '';
-  if (!userStore.verifyPassword(username, String(payload.password || ''))) {
-    payload.password = '';
-    recordFailure(req);
-    return json(res, 401, { ok: false, error: 'dashboard password incorrect' });
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)
+    || ['jobId', 'phrase', 'storeKey', 'sha256Short', 'confirmationChallenge'].some(
+      field => payload[field] !== undefined && typeof payload[field] !== 'string',
+    )
+    || (payload.size !== undefined && (!Number.isSafeInteger(payload.size) || payload.size < 1))) {
+    return json(res, 400, { ok: false, error: 'invalid confirmation payload' });
   }
-  payload.password = '';
-  loginFailures.delete(failure.ip);
   try {
     const current = readProductUploadJob({ outDir: config.outDir, jobId: String(payload.jobId || '') });
     refreshStores();
@@ -1627,10 +1690,111 @@ async function confirmProductUploadRequest(req, res) {
       phrase: String(payload.phrase || ''),
       actor: operatorIdentity(req),
     });
+    if (job.state === 'EXPIRED') {
+      return json(res, 409, { ok: false, error: '上传任务已过期，请重新暂存并确认文件', job: publicUploadJob(job) });
+    }
     return json(res, 202, { ok: true, job: publicUploadJob(job) });
   } catch (error) {
     return json(res, 409, { ok: false, error: safeData(String(error?.message || error)) });
   }
+}
+
+async function resetProductUploadRequest(req, res) {
+  if (!PRODUCT_UPLOAD_ENABLED) return json(res, 503, { ok: false, error: 'product upload disabled' });
+  if (!validProductUploadRole(req)) return json(res, 403, { ok: false, error: 'product upload role required' });
+  if (!requireProtectedMutation(req, res)) return;
+  if (!/^application\/json(?:\s*;|$)/i.test(String(req.headers['content-type'] || ''))) {
+    return json(res, 415, { ok: false, error: 'application/json required' });
+  }
+  let payload;
+  try { payload = JSON.parse(await readBody(req, 16 * 1024)); }
+  catch { return json(res, 400, { ok: false, error: 'invalid JSON payload' }); }
+  if (!validProductUploadRole(req)) return json(res, 403, { ok: false, error: 'product upload role required' });
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)
+    || ['jobId', 'storeKey', 'sha256Short', 'resetChallenge'].some(field => typeof payload[field] !== 'string')
+    || !Number.isSafeInteger(payload.size) || payload.size < 1) {
+    return json(res, 400, { ok: false, error: 'invalid reset binding payload' });
+  }
+  let lease;
+  try {
+    lease = acquireRunLock({ outDir: config.outDir, label: 'product-upload-reset' });
+    const current = readProductUploadJob({ outDir: config.outDir, jobId: payload.jobId });
+    if (!productUploadResetInfo({ outDir: config.outDir, job: current }).eligible) {
+      return json(res, 409, { ok: false, error: '任务正在执行或已经重置，不能再次重置' });
+    }
+    if (!safeEqual(payload.resetChallenge, uploadResetChallenge(current))
+      || payload.storeKey !== current.store.key
+      || payload.sha256Short !== current.file.sha256.slice(0, 12)
+      || payload.size !== current.file.size) {
+      return json(res, 409, { ok: false, error: 'reset binding mismatch' });
+    }
+    resetProductUploadDuplicate({ outDir: config.outDir, jobId: current.id, phrase: productUploadResetPhrase(current),
+      reason: '上传中心按钮手动重置重复上传', acknowledgeRisk: true, actor: operatorIdentity(req) });
+    return json(res, 200, { ok: true, job: publicUploadJob(current, true) });
+  } catch (error) {
+    const uncertain = error?.code === 'RESET_COMMIT_UNKNOWN';
+    return json(res, uncertain ? 503 : 409, { ok: false, ...(uncertain ? { code: error.code } : {}), error: error?.code === 'RUN_ALREADY_ACTIVE'
+      ? '监测或上传工作者正在运行，请稍后重置' : safeData(String(error?.message || error)) });
+  } finally { if (lease) releaseRunLock(lease); }
+}
+
+async function refreshProductUploadRequest(req, res) {
+  if (!PRODUCT_UPLOAD_ENABLED) return json(res, 503, { ok: false, error: 'product upload disabled' });
+  if (!validProductUploadRole(req)) return json(res, 403, { ok: false, error: 'product upload role required' });
+  if (!requireProtectedMutation(req, res)) return;
+  if (!/^application\/json(?:\s*;|$)/i.test(String(req.headers['content-type'] || ''))) {
+    return json(res, 415, { ok: false, error: 'application/json required' });
+  }
+  let payload;
+  try { payload = JSON.parse(await readBody(req, 4096)); }
+  catch { return json(res, 400, { ok: false, error: 'invalid JSON payload' }); }
+  if (!validProductUploadRole(req)) return json(res, 403, { ok: false, error: 'product upload role required' });
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)
+    || Object.keys(payload).length !== 1 || typeof payload.jobId !== 'string' || !/^upl_[a-f0-9]{32}$/.test(payload.jobId)) {
+    return json(res, 400, { ok: false, error: '只接受有效的 jobId；批次与店铺由原上传记录确定' });
+  }
+  let lease;
+  try {
+    lease = acquireRunLock({ outDir: config.outDir, label: 'product-upload-result-request' });
+    refreshStores();
+    const job = readProductUploadJob({ outDir: config.outDir, jobId: payload.jobId });
+    if (!productUploadStoreMatches(job, stores.find(store => store.key === job.store.key))) {
+      return json(res, 409, { ok: false, error: '原上传店铺已停用或绑定发生变化，已停止结果采集' });
+    }
+    requestProductUploadProcessing({ outDir: config.outDir, jobId: job.id, config, actor: operatorIdentity(req) });
+    return json(res, 202, { ok: true, job: publicUploadJob(job, true) });
+  } catch (error) {
+    return json(res, 409, { ok: false, error: error?.code === 'RUN_ALREADY_ACTIVE'
+      ? '监测或上传正在运行，结果采集会依次执行，请稍后刷新'
+      : safeData(String(error?.message || error)) });
+  } finally { if (lease) releaseRunLock(lease); }
+}
+
+function downloadProductUploadReport(req, res, url) {
+  if (!validProductUploadRole(req)) return json(res, 403, { ok: false, error: 'product upload role required' });
+  if (url.searchParams.size !== 1 || url.searchParams.getAll('jobId').length !== 1
+    || !/^upl_[a-f0-9]{32}$/.test(url.searchParams.get('jobId') || '')) {
+    return json(res, 400, { ok: false, error: '只接受有效的 jobId' });
+  }
+  try { fs.lstatSync(path.join(config.outDir, 'product-uploads', 'jobs', url.searchParams.get('jobId'))); }
+  catch (error) {
+    if (error.code === 'ENOENT') return json(res, 404, { ok: false, error: '上传任务不存在' });
+    return json(res, 409, { ok: false, error: '上传任务无法安全核对' });
+  }
+  let report;
+  try { report = readProductUploadReport({ outDir: config.outDir, jobId: url.searchParams.get('jobId'), includeBuffer: true }); }
+  catch { return json(res, 409, { ok: false, error: '处理报告无法安全核对，请重新获取结果' }); }
+  if (!report) return json(res, 404, { ok: false, error: '处理报告尚未取得或已过期，请获取最新处理结果' });
+  res.writeHead(200, {
+    'Content-Type': report.format === 'XLSX' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      : report.format === 'XLSM' ? 'application/vnd.ms-excel.sheet.macroEnabled.12' : 'application/octet-stream',
+    'Content-Disposition': `attachment; filename="${report.name}"`,
+    'Content-Length': report.buffer.length,
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': 'sandbox',
+  });
+  return res.end(report.buffer);
 }
 
 function canonical(value) {
@@ -1729,20 +1893,27 @@ async function ingest(req, res) {
   return json(res, 201, { ok: true, duplicate: false, check: clean.check, runId: clean.runId, storedAt });
 }
 
-/** Serve a screenshot, but only from inside outDir. */
+/** Serve a collector screenshot; upload diagnostics are private even to administrators. */
 function serveShot(res, rel) {
   if (typeof rel !== 'string' || rel.includes('\0') || path.isAbsolute(rel)) {
     return json(res, 403, { ok: false, error: 'path outside output directory' });
+  }
+  const requested = path.resolve(config.outDir, rel);
+  const isUploadPath = (root, file) => path.relative(root, file).split(path.sep)[0] === 'product-uploads';
+  if (isUploadPath(path.resolve(config.outDir), requested)) {
+    return json(res, 403, { ok: false, error: 'not available' });
   }
   let base;
   let target;
   try {
     base = fs.realpathSync(config.outDir);
-    target = fs.realpathSync(path.resolve(config.outDir, rel));
+    target = fs.realpathSync(requested);
   } catch {
     return json(res, 404, { ok: false, error: 'not found' });
   }
-  if (!target.startsWith(`${base}${path.sep}`) || !/\.(png|jpe?g)$/i.test(target) || !fs.statSync(target).isFile()) {
+  const targetStat = fs.statSync(target);
+  if (!target.startsWith(`${base}${path.sep}`) || isUploadPath(base, target)
+    || !/\.(png|jpe?g)$/i.test(target) || !targetStat.isFile() || targetStat.nlink !== 1) {
     return json(res, 403, { ok: false, error: 'not available' });
   }
   const buf = fs.readFileSync(target);
@@ -1886,14 +2057,35 @@ const server = http.createServer(async (req, res) => {
         res.setHeader('Allow', 'POST');
         return json(res, 405, { ok: false, error: 'method not allowed' });
       }
-      return stageProductUploadRequest(req, res);
+      return await stageProductUploadRequest(req, res);
     }
     if (p === '/api/product-uploads/confirm') {
       if (req.method !== 'POST') {
         res.setHeader('Allow', 'POST');
         return json(res, 405, { ok: false, error: 'method not allowed' });
       }
-      return confirmProductUploadRequest(req, res);
+      return await confirmProductUploadRequest(req, res);
+    }
+    if (p === '/api/product-uploads/reset') {
+      if (req.method !== 'POST') {
+        res.setHeader('Allow', 'POST');
+        return json(res, 405, { ok: false, error: 'method not allowed' });
+      }
+      return await resetProductUploadRequest(req, res);
+    }
+    if (p === '/api/product-uploads/refresh') {
+      if (req.method !== 'POST') {
+        res.setHeader('Allow', 'POST');
+        return json(res, 405, { ok: false, error: 'method not allowed' });
+      }
+      return await refreshProductUploadRequest(req, res);
+    }
+    if (p === '/api/product-uploads/report') {
+      if (req.method !== 'GET') {
+        res.setHeader('Allow', 'GET');
+        return json(res, 405, { ok: false, error: 'method not allowed' });
+      }
+      return downloadProductUploadReport(req, res, url);
     }
     if (req.method === 'GET' && p.startsWith('/api/history/')) {
       const id = decodeURIComponent(p.slice('/api/history/'.length));
@@ -1933,7 +2125,7 @@ const server = http.createServer(async (req, res) => {
       || p === '/api/users' || p.startsWith('/api/users/') || p === '/api/account/password'
       || p === '/api/ads-rules'
       || p === '/api/product-uploads' || p === '/api/product-uploads/stage'
-      || p === '/api/product-uploads/confirm' || p === '/shot' || p === '/evidence' || p.startsWith('/api/check/') || p.startsWith('/api/history/');
+      || p === '/api/product-uploads/confirm' || p === '/api/product-uploads/reset' || p === '/api/product-uploads/refresh' || p === '/shot' || p === '/evidence' || p.startsWith('/api/check/') || p.startsWith('/api/history/');
     if (knownPath) {
       res.setHeader('Allow', p === '/logout' ? 'POST' : 'GET');
       return json(res, 405, { ok: false, error: 'method not allowed' });

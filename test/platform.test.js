@@ -15,7 +15,7 @@ import { writeGenericReports } from '../src/lib/report.js';
 import { createStateStore } from '../src/lib/state.js';
 import { selectAdvertisingCampaignStateResilient } from '../src/lib/check-runner.js';
 import { bjStamp } from '../src/lib/time.js';
-import { assertSafeRetentionRoot, runRetention, retentionPlan } from '../src/tools/retention.js';
+import { assertSafeRetentionRoot, runRetention, retentionPlan, retentionClass } from '../src/tools/retention.js';
 import { runTestNotify } from '../src/tools/test-notify.js';
 import { isTransientZiniaoStartupFailure, runDoctorWithStartupGrace } from '../src/lib/collector-health.js';
 
@@ -675,7 +675,9 @@ test('retention dry-run preserves data and apply deletes only eligible in-root f
     path.join(outDir, 'alerts', '2020-01-01.jsonl'),
     path.join(outDir, 'channels', 'crm', '2020-01-01.jsonl'),
     path.join(outDir, 'channels', 'retention', '2020-01-01.jsonl'),
-    path.join(outDir, 'product-uploads', 'jobs', `upl_${'a'.repeat(32)}`, 'record.json'),
+    path.join(outDir, 'product-uploads', 'jobs', 'invalid-job-id', 'record.json'),
+    path.join(outDir, 'product-uploads', 'jobs', 'invalid-job-id', 'reset.json'),
+    path.join(outDir, 'product-uploads', 'audit', '2020-01-01.jsonl'),
     path.join(outDir, 'product-uploads', 'jobs', `upl_${'a'.repeat(32)}`, 'payload.csv'),
   ];
   const keepFiles = [
@@ -683,6 +685,8 @@ test('retention dry-run preserves data and apply deletes only eligible in-root f
     path.join(outDir, 'state', 'reviews.json'),
     path.join(outDir, 'channels', 'crm', 'ledger.json'),
     path.join(outDir, 'reviews', 'latest.json'),
+    path.join(outDir, 'product-uploads', 'jobs', `upl_${'a'.repeat(32)}`, 'record.json'),
+    path.join(outDir, 'product-uploads', 'jobs', `upl_${'a'.repeat(32)}`, 'reset.json'),
   ];
   for (const file of [...oldFiles, ...keepFiles]) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -700,6 +704,7 @@ test('retention dry-run preserves data and apply deletes only eligible in-root f
   const plan = retentionPlan({ outDir, now, days: { evidence: 1, report: 1, log: 1, audit: 1, uploadPayload: 7 } });
   assert.deepEqual(new Set(plan.remove.map((item) => item.file)), new Set(oldFiles));
   assert.equal(plan.remove.find((item) => item.file.endsWith('payload.csv')).category, 'uploadPayload');
+  assert.equal(plan.limits.uploadPayload, 7);
   assert.equal(plan.remove.every((item) => path.relative(outDir, item.file).split(path.sep)[0] !== '..'), true);
 
   const dry = runRetention({ outDir, apply: false, now });
@@ -729,6 +734,34 @@ test('retention rejects a symlink root and broad working-directory scope before 
 
   // This calls only the guard; it must reject before any walk/chmod/unlink.
   assert.throws(() => assertSafeRetentionRoot(process.cwd()), /范围过宽/);
+});
+
+test('private upload diagnostics follow the evidence lifetime while original ledgers remain durable', () => {
+  const outDir = tempDir('amzguard-retention-upload-diagnostics-');
+  const jobRoot = `product-uploads/jobs/upl_${'b'.repeat(32)}`;
+  const now = Date.parse('2026-09-13T00:00:00Z'), day = 86_400_000;
+  const fixtures = [
+    [`${jobRoot}/diagnostics/current.png`, 46],
+    [`${jobRoot}/diagnostics/current.json`, 46],
+    [`${jobRoot}/diagnostics/latest.json`, 46],
+    [`${jobRoot}/diagnostics/recent.png`, 44],
+    [`${jobRoot}/diagnostics/exact-boundary.json`, 45],
+    [`${jobRoot}/record.json`, 1000],
+    [`${jobRoot}/reset.json`, 1000],
+    ['product-uploads/jobs/invalid-id/diagnostics/current.json', 46],
+    ['product-uploads/audit/recent.jsonl', 46],
+  ];
+  for (const [relative, age] of fixtures) {
+    const file = path.join(outDir, relative); fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, 'synthetic evidence');
+    fs.utimesSync(file, new Date(now - age * day), new Date(now - age * day));
+  }
+  const plan = retentionPlan({ outDir, now, days: { evidence: 45, audit: 365 } });
+  assert.deepEqual(plan.remove.map(item => item.relative).sort(), fixtures.slice(0, 3).map(([relative]) => relative).sort());
+  assert.ok(plan.remove.every(item => item.category === 'evidence'));
+  assert.equal(retentionClass(`${jobRoot}/record.json`), 'keep');
+  assert.equal(retentionClass(`${jobRoot}/reset.json`), 'keep');
+  assert.equal(retentionClass('product-uploads/jobs/invalid-id/diagnostics/current.json'), 'audit');
 });
 
 test('dashboard ingest rejects non-loopback HTTP and permits a sanitized loopback test request', async (t) => {

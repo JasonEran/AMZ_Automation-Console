@@ -130,6 +130,7 @@ test('upload worker reads the whole current active registry under lease and neve
     const opened = [];
     const result = await runProductUploadWorker({ config: f.config, stores: f.loaded, logger,
       zn: { async storeOpen(options) { assertLease(f); opened.push(options.id); return { storeId: 'mock' }; },
+        async inspectProductBulkUploadPage() { return { ready: true, eligibleFileInputCount: 1 }; },
         async prepareProductBulkUpload() { assert.equal(readProductUploadJob({ outDir: f.outDir, jobId: staged.id }).state, 'SUBMITTING'); },
         async submitProductBulkUpload() { return { pageTextDelta: '', currentUrl: 'https://sellercentral.amazon.com/product-search/bulk' }; }, async storeClose() {} } });
     assert.deepEqual(opened, mode === 'disabled' ? [] : [mode === 'new-store' ? '3' : '42']);

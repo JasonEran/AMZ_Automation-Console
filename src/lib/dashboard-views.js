@@ -240,7 +240,7 @@ export function buildOperationalViews({
     enabled: Boolean(upload.enabled),
     authorized: Boolean(upload.authorized),
     api: '/api/product-uploads',
-    writeBoundary: '仅逐任务预检、再认证和精确确认后允许通过紫鸟提交；未知结果禁止自动重试',
+    writeBoundary: '仅已登录且有权限的用户逐任务预检和精确确认后允许通过紫鸟提交；未知结果禁止自动重试',
   });
   views.set('system-assurance', {
     id: 'system-assurance',

@@ -22,7 +22,7 @@
 - 打开 Inbox 消息会话、标记已读或回复消息；该项只读列表，打开会话本身会改变已读状态。
 - 使用普通 Chrome、独立 Playwright/Puppeteer、HTTP 客户端或其他路径访问 Amazon。
 
-唯一例外是已确认的 Seller Central 商品批量上传。它必须同时满足：Dashboard 已认证且具备上传角色、CSRF/同源校验通过、对已预检文件完成密码再认证和精确短语确认、授权绑定任务 ID/店铺/完整 SHA-256/大小/有效期、固定精确 URL `https://sellercentral.amazon.com/product-search/bulk`、只存在唯一文件控件和白名单提交控件、通过对应店铺紫鸟、独立工作者双闸开启且安全扫描通过。文件选择前即持久化 `SUBMITTING`；一旦越过边界，超时、崩溃或结果冲突都进入 `UNKNOWN`，禁止自动重试。每个真实文件必须逐任务确认，禁止批量预授权或脚本绕过 Dashboard。
+唯一例外是已确认的 Seller Central 商品批量上传。它必须同时满足：Dashboard 已认证且具备上传角色、CSRF/同源校验通过、对已预检文件完成精确短语确认（沿用当前登录会话，无需重复输入密码）、授权绑定任务 ID/店铺/完整 SHA-256/大小/有效期、固定精确 URL `https://sellercentral.amazon.com/product-search/bulk`、只存在唯一文件控件和白名单提交控件、通过对应店铺紫鸟、独立工作者双闸开启且安全扫描通过。文件选择前即持久化 `SUBMITTING`；一旦越过边界，超时、崩溃或结果冲突都进入 `UNKNOWN`，禁止自动重试。每个真实文件必须逐任务确认，禁止批量预授权或脚本绕过 Dashboard。
 
 解析与交互代码审查必须把可点击控件当作高风险面。除上述精确例外外，新增 Amazon 点击动作必须证明它属于只读或获批登录流程，并有离线断言。
 
@@ -60,7 +60,7 @@ Dashboard 账户保存在私有的 `out/runtime/users.json`，其中密码仅以
 
 CRM 入站接口与 Dashboard 用户体系隔离：后端令牌只授予明确店铺名单，浏览器票据绑定发起握手的浏览器及单店，兑换后仅取得独立只读 Cookie。不能用于原 Dashboard API、上传、补跑或竞品情报；两种会话同时存在时仍分别检查各自权限。CRM 签票端必须独立检查其当前用户和店铺授权，不能向浏览器下发机器令牌。弹窗模式仅与显式配置的 CRM origin 通信，双向核对 origin、窗口句柄和本次握手；HTTP CRM 的既有页面及用户 Token 传输风险不会因此消失。旧重定向模式仍要求有效的 HTTPS 回调。接口不返回截图、原始页面、内部路径和 Inbox 消息实体；详见 [认证与免密协议](CRM_API.md)。
 
-启用商品上传时，服务启动检查 `AMZGUARD_PRODUCT_UPLOAD_ADMIN_USERNAME` 是否匹配用户库中已启用的管理员；Linux 安装脚本还要求它等于 `dashboard.env` 中的 `DASHBOARD_USERNAME`。当前启动校验要求 `admin`，运行期上传资格却只按配置用户名匹配；角色降级后重新登录仍可能取得上传角色。两处授权条件的差异尚待确认，不能仅凭旧会话失效认定上传权限已撤销。
+启用商品上传时，服务启动检查 `AMZGUARD_PRODUCT_UPLOAD_ADMIN_USERNAME` 是否匹配用户库中已启用的管理员；Linux 安装脚本还要求它等于 `dashboard.env` 中的 `DASHBOARD_USERNAME`。登录签发上传角色时，以及每次上传、重置、刷新结果或下载报告时，都检查当前账户仍为已启用管理员且用户名匹配。账户停用或降级后，旧会话失效，重新登录也不会恢复上传权限；恢复管理员角色后需重新登录。
 
 以下位置永远不能保存凭据：源码、Git、`config/*.json`、示例文件、systemd unit、Nginx 配置、日志、报告、CSV/HTML、截图、测试 fixture、工单和聊天。
 
@@ -85,7 +85,7 @@ CRM 入站接口与 Dashboard 用户体系隔离：后端令牌只授予明确�
 - Xvfb 使用随机 Xauthority，`-nolisten tcp`；紫鸟使用专用 runtime 目录。
 - Dashboard、紫鸟和 Xvfb 由 systemd 自动重启，timer 使用 `Persistent=true`。
 - Nginx、应用日志与证据有保留策略；状态基线、CRM 成功账本和最新报告不随普通证据清理。Nginx 日志保持 `www-data:adm 0640`，不能交给运行采集器的 `ubuntu` 用户。
-- 商品上传原始文件仅保存在 `out/product-uploads/jobs/<job-id>/` 私有目录，目录 `0700`、文件 `0600`；暂存确认有效期为 30 分钟，过期后不得提交。列表刷新或新建暂存触发过期检查时会清除仍处于 `STAGED` 的过期 payload；保留任务按文件年龄清理其余 payload，默认 7 天，不保证到第 30 分钟即时删除。任务账本和脱敏审计按审计保留期保存。单文件、总暂存量、并发、队列和磁盘余量均有限额。
+- 商品上传原始文件仅保存在 `out/product-uploads/jobs/<job-id>/` 私有目录，目录 `0700`、文件 `0600`；暂存确认有效期为 30 分钟，过期后不得提交。列表刷新或新建暂存触发过期检查时会清除仍处于 `STAGED` 的过期 payload；保留任务按文件年龄清理其余 payload，默认 7 天，不保证到第 30 分钟即时删除。合法任务目录中的 `record.json`、`reset.json` 和处理状态长期保留，维护回执、重复保护及重置关联；脱敏审计默认保留 365 天，原处理报告默认保留 45 天。单文件、总暂存量、并发、队列和磁盘余量均有限额。报告的访问权限见[上传运行说明](OPERATIONS.md#1-总体状态)。
 - Linux 生产 unit 通过拆分环境文件隔离凭据：Dashboard 不获得紫鸟或通道凭据，独立上传工作者不获得 Dashboard 密码或 Session Secret。此隔离依赖部署配置，不能当作 macOS 开发进程或任意继承环境的代码保证。上传双闸默认关闭，关闭时 path/timer 必须 disabled/inactive。
 
 权限审计：

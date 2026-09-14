@@ -16,9 +16,13 @@ import {
   listProductUploadJobs,
   payloadPathForJob,
   productUploadExecutionEnabled,
+  productUploadEnabled,
+  productUploadStoreMatches,
   recoverInterruptedProductUploads,
+  saveProductUploadDiagnostic,
   transitionProductUpload,
 } from '../lib/product-upload.js';
+import { processProductUploadResults } from '../lib/product-upload-processing-runner.js';
 import { redactText, sanitizeUrl } from '../lib/redact.js';
 import { bjDateKey, bjIso } from '../lib/time.js';
 import { createZiniao } from '../lib/ziniao-factory.js';
@@ -29,6 +33,26 @@ function oldestQueued(outDir) {
   return listProductUploadJobs({ outDir, limit: 500 })
     .filter((job) => job.state === 'QUEUED')
     .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))[0] || null;
+}
+
+async function captureFailureDiagnostic({ config, logger, zn, storeId, job, phase }) {
+  if (!storeId || !['UNKNOWN', 'FAILED_BEFORE_SUBMIT'].includes(job?.state)
+    || !['PAGE_READY', 'FILE_SELECTION', 'SUBMIT', 'AMAZON_RESPONSE'].includes(phase)
+    || typeof zn?.captureProductBulkUploadDiagnostic !== 'function') return;
+  let timeout;
+  try {
+    const deadline = new Promise((_, reject) => {
+      timeout = setTimeout(() => reject(new Error('上传诊断采集超时')), 15000);
+    });
+    const snapshot = await Promise.race([
+      zn.captureProductBulkUploadDiagnostic(storeId, { expectedSize: job.file.size }), deadline,
+    ]);
+    saveProductUploadDiagnostic({ outDir: config.outDir, jobId: job.id, phase, snapshot });
+  } catch {
+    // A diagnostic failure must never replace the upload outcome or expose
+    // page content, file names, credentials or filesystem paths in a log.
+    logger?.warn?.('上传失败现场未能保存；原任务结果保持不变');
+  } finally { clearTimeout(timeout); }
 }
 
 function scanFile(file) {
@@ -71,7 +95,7 @@ function scanFile(file) {
 
 async function notifyResult({ config, logger, job }) {
   const presentation = {
-    COMPLETED: { severity: 'OK', conclusion: '\u5df2\u88ab Amazon \u4e0a\u4f20\u7aef\u63a5\u6536\uff0c\u540e\u7eed\u5904\u7406\u7ed3\u679c\u4ee5 Seller Central \u5904\u7406\u62a5\u544a\u4e3a\u51c6' },
+    COMPLETED: { severity: 'OK', conclusion: '文件已被 Amazon 接收，后续商品处理结果可在上传中心查看' },
     REJECTED: { severity: 'CRITICAL', conclusion: 'Amazon \u660e\u786e\u62d2\u7edd\u672c\u6b21\u6587\u4ef6\uff0c\u9700\u4e1a\u52a1\u4fee\u6b63\u6587\u4ef6' },
     FAILED_BEFORE_SUBMIT: { severity: 'ERROR', conclusion: '\u63d0\u4ea4\u524d\u5931\u8d25\uff0cAmazon \u672a\u6267\u884c\u4e0a\u4f20\u70b9\u51fb' },
     UNKNOWN: { severity: 'WARN', conclusion: '\u7ed3\u679c\u65e0\u6cd5\u786e\u8ba4\uff0c\u4e3a\u9632\u6b62\u91cd\u590d\u521b\u5efa\u5df2\u505c\u6b62\u81ea\u52a8\u91cd\u8bd5' },
@@ -92,7 +116,7 @@ async function notifyResult({ config, logger, job }) {
 }
 
 export async function runProductUploadWorker({ config, stores, logger, zn: providedZiniao } = {}) {
-  if (!productUploadExecutionEnabled()) {
+  if (!productUploadEnabled()) {
     logger?.info?.('\u5546\u54c1\u6279\u91cf\u4e0a\u4f20\u6267\u884c\u5f00\u5173\u672a\u542f\u7528');
     return { code: 0, processed: false, reason: 'disabled' };
   }
@@ -110,15 +134,17 @@ export async function runProductUploadWorker({ config, stores, logger, zn: provi
   let job = null;
   let openedStoreId = null;
   let stateAtFailure = null;
+  let phase = 'FILE_SAFETY';
   let zn;
   try {
     if (config._storesPath) stores = readEffectiveStores(config);
     zn = providedZiniao || createZiniao({ config, logger });
+    if (!productUploadExecutionEnabled()) return await processProductUploadResults({ config, stores, logger, zn });
     recoverInterruptedProductUploads({ outDir: config.outDir });
     job = oldestQueued(config.outDir);
-    if (!job) return { code: 0, processed: false, reason: 'empty' };
+    if (!job) return await processProductUploadResults({ config, stores, logger, zn });
     const store = stores.find((candidate) => candidate.key === job.store.key && candidate.enabled !== false);
-    if (!store) {
+    if (!productUploadStoreMatches(job, store)) {
       const finishedAt = bjIso();
       job = transitionProductUpload({
         outDir: config.outDir, jobId: job.id, from: 'QUEUED', to: 'FAILED_BEFORE_SUBMIT',
@@ -144,12 +170,20 @@ export async function runProductUploadWorker({ config, stores, logger, zn: provi
     stateAtFailure = 'PROCESSING';
     const payloadFile = payloadPathForJob({ outDir: config.outDir, job });
     await scanFile(payloadFile);
+    phase = 'OPEN_STORE';
     const opened = await zn.storeOpen({
       name: store.name, id: store.id, market: store.market || job.store.market,
       url: PRODUCT_UPLOAD_PAGE, headless: false, privacy: false,
       timeoutMs: Math.max(120000, Number(config.ziniao?.openTimeoutMs || 180000)),
     });
     openedStoreId = opened.storeId;
+    phase = 'PAGE_READY';
+    const readiness = await zn.inspectProductBulkUploadPage(openedStoreId, { timeoutMs: 60000 });
+    if (readiness?.ready !== true || readiness?.eligibleFileInputCount !== 1) {
+      const error = new Error('批量上传文件控件未在等待期内就绪');
+      error.code = 'UPLOAD_FILE_INPUT_NOT_READY';
+      throw error;
+    }
     // Sending a path to input[type=file] can itself trigger an upload on a
     // changed Amazon page. Persist the no-retry boundary before sendKeys.
     job = transitionProductUpload({
@@ -158,15 +192,24 @@ export async function runProductUploadWorker({ config, stores, logger, zn: provi
       auditEvent: 'submit-boundary-crossed',
     });
     stateAtFailure = 'SUBMITTING';
+    phase = 'FILE_SELECTION';
     const writeAuthorization = {
       approved: true, action: 'product-bulk-upload', jobId: job.id, sha256: job.file.sha256,
     };
-    await zn.prepareProductBulkUpload(openedStoreId, payloadFile, { authorization: writeAuthorization, timeoutMs: 45000 });
+    await zn.prepareProductBulkUpload(openedStoreId, payloadFile, { authorization: writeAuthorization, timeoutMs: 120000 });
+    phase = 'SUBMIT';
     const response = await zn.submitProductBulkUpload(openedStoreId, {
       authorization: writeAuthorization,
       timeoutMs: 120000,
     });
-    const classified = classifyProductUploadResult(response.pageTextDelta);
+    const statusReceipt = response.receipt?.version === 1 && response.receipt.source === 'AMAZON_UPLOAD_STATUS_ROW'
+      && response.receipt.fileNameMatched === true && response.receipt.latestRowMatched === true
+      && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/.test(response.receipt.batchId || '')
+      ? response.receipt : null;
+    const classified = statusReceipt
+      ? { state: 'COMPLETED', code: 'AMAZON_ACCEPTED_UPLOAD', receiptStatus: 'ACCEPTED', processingStatus: null }
+      : classifyProductUploadResult(response.pageTextDelta);
+    phase = 'AMAZON_RESPONSE';
     const finishedAt = bjIso();
     job = transitionProductUpload({
       outDir: config.outDir, jobId: job.id, from: 'SUBMITTING', to: classified.state,
@@ -177,14 +220,21 @@ export async function runProductUploadWorker({ config, stores, logger, zn: provi
           code: classified.code,
           receiptStatus: classified.receiptStatus,
           processingStatus: classified.processingStatus,
+          batchId: statusReceipt?.batchId,
+          receiptEvidence: statusReceipt ? 'UPLOAD_STATUS_ROW' : null,
+          message: statusReceipt ? 'Amazon 上传状态页已出现与本次返回批次及文件对应的记录。商品处理结果仍以 Amazon 处理报告为准。' : null,
           resultUrl: sanitizeUrl(response.currentUrl),
           observedAt: finishedAt,
+          amazonText: response.pageTextDelta,
+          originalName: job.file.originalName,
+          phase,
         }),
       },
       auditEvent: classified.state === 'COMPLETED' ? 'amazon-accepted'
         : classified.state === 'REJECTED' ? 'amazon-rejected' : 'result-unconfirmed',
     });
     clearProductUploadQueueMarker({ outDir: config.outDir, jobId: job.id });
+    await captureFailureDiagnostic({ config, logger, zn, storeId: openedStoreId, job, phase });
     await notifyResult({ config, logger, job });
     return { code: job.state === 'COMPLETED' ? 0 : job.state === 'REJECTED' ? 1 : 2, processed: true, jobId: job.id, state: job.state };
   } catch (error) {
@@ -204,12 +254,15 @@ export async function runProductUploadWorker({ config, stores, logger, zn: provi
             state: targetState,
             code: afterBoundary ? 'SUBMISSION_OUTCOME_UNKNOWN' : 'FAILED_BEFORE_SUBMIT',
             message,
+            errorCode: error?.code,
+            phase,
             observedAt: finishedAt,
           }),
         },
         auditEvent: afterBoundary ? 'result-unconfirmed' : 'failed-before-submit',
       });
       clearProductUploadQueueMarker({ outDir: config.outDir, jobId: job.id });
+      await captureFailureDiagnostic({ config, logger, zn, storeId: openedStoreId, job, phase });
       await notifyResult({ config, logger, job });
     } catch (recordError) {
       logger?.error?.(`\u4e0a\u4f20\u5931\u8d25\u4e14\u65e0\u6cd5\u5b8c\u6210\u4efb\u52a1\u5ba1\u8ba1: ${redactText(recordError.message)}`);

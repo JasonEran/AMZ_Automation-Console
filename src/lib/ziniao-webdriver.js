@@ -14,6 +14,7 @@ import { SECURITY_CLEANUP_FAILED } from './evidence-cleanup.js';
 import { classifyLivePageSafety, classifyUrlSafety } from './page-safety.js';
 import { redactText } from './redact.js';
 import { sanitizeZiniaoWebDriverLogs } from './ziniao-log-sanitizer.js';
+import { normalizeProductUploadStatusRow } from './product-upload-status.js';
 
 /**
  * Official Ziniao WebDriver transport.
@@ -40,7 +41,7 @@ export function isApprovedProductBulkUploadUrl(value) {
     && parsed.port === ''
     && parsed.search === ''
     && parsed.hash === ''
-    && parsed.pathname.replace(/\/+$/, '') === PRODUCT_BULK_UPLOAD_PATH,
+    && parsed.pathname === PRODUCT_BULK_UPLOAD_PATH,
   );
 }
 
@@ -49,7 +50,183 @@ export function isApprovedProductUploadSubmitLabel(value) {
   return new Set([
     'upload', 'upload file', 'upload your file', 'upload inventory file', 'submit file',
     '\u4e0a\u4f20', '\u4e0a\u4f20\u6587\u4ef6', '\u4e0a\u4f20\u5546\u54c1\u6587\u4ef6', '\u63d0\u4ea4\u6587\u4ef6',
+    // Observed on the US bulk page in Chinese, 2026-09-12. Keep generic
+    // "Submit" disallowed; only the exact product-upload action is approved.
+    '\u63d0\u4ea4\u5546\u54c1',
   ]).has(label);
+}
+
+async function productUploadSubmitControlLabel(control, readiness = null) {
+  const label = String(
+    (await control.getText()) || (await control.getAttribute('aria-label'))
+    || (await control.getAttribute('label')) || (await control.getAttribute('value')) || '',
+  ).replace(/\s+/g, ' ').trim();
+  if (!isApprovedProductUploadSubmitLabel(label)) return '';
+  if (readiness) readiness.approvedLabels++;
+  if (!await control.isDisplayed()) {
+    if (readiness) readiness.notDisplayed++;
+    return '';
+  }
+  if (!await control.isEnabled()) {
+    if (readiness) readiness.nativeDisabled++;
+    return '';
+  }
+  // KAT custom-element hosts can pass the native WebDriver enabled check even
+  // while their own disabled state is set. Read that state without changing it.
+  const disabled = await control.getAttribute('disabled');
+  const ariaDisabled = String((await control.getAttribute('aria-disabled')) || '').trim().toLowerCase();
+  if (disabled !== null) {
+    if (readiness) readiness.disabledAttribute++;
+    return '';
+  }
+  if (ariaDisabled && ariaDisabled !== 'false') {
+    if (readiness) readiness.ariaDisabled++;
+    return '';
+  }
+  return label;
+}
+
+// Observed in Amazon's FederatedBulkListings / AmazonTemplatePreview UI.
+// These IDs identify one upload workflow; they do not approve generic Submit
+// buttons elsewhere on the page. Never edit cells, select rows or invoke the
+// application's internal submission methods while traversing this workflow.
+const PRODUCT_UPLOAD_PREVIEW_MODAL = '#bulk-upload-page kat-modal.amazon-template-preview[visible]:not([visible="false"])';
+const PRODUCT_UPLOAD_PREVIEW_SELECTORS = Object.freeze({
+  open: '#bulk-upload-page kat-button#open-upload-preview-btn[data-testid="upload-preview-btn"]',
+  submit: `${PRODUCT_UPLOAD_PREVIEW_MODAL} .online-spreadsheet-root kat-button#submit-button`,
+  confirm: `${PRODUCT_UPLOAD_PREVIEW_MODAL} .online-spreadsheet-root kat-modal#submit-products-confirmation-modal[visible]:not([visible="false"]) kat-button#submit-products-confirmation-submit-with-errors-btn`,
+});
+const PRODUCT_UPLOAD_TOUR_OVERLAY = '.react-joyride__overlay[data-test-id="overlay"]';
+
+async function visibleProductUploadElements(driver, By, selector) {
+  const visible = [];
+  for (const element of await driver.findElements(By.css(selector))) {
+    if (await element.isDisplayed()) visible.push(element);
+  }
+  return visible;
+}
+
+async function dismissProductUploadPreviewTour(zn, storeId, driver, By, Key, state) {
+  const overlays = await visibleProductUploadElements(driver, By, PRODUCT_UPLOAD_TOUR_OVERLAY);
+  if (!overlays.length) return;
+  if (overlays.length !== 1 || state.escapeSent) {
+    throw new ZiniaoError('上传预览导览遮罩不唯一或再次出现，已停止操作', { code: 'UPLOAD_PREVIEW_TOUR_BLOCKED' });
+  }
+  const previewRoot = `${PRODUCT_UPLOAD_PREVIEW_MODAL} .online-spreadsheet-root`;
+  const inspectPreview = async () => {
+    if (!isApprovedProductBulkUploadUrl(await driver.getCurrentUrl())) throw new ZiniaoError('关闭上传导览前后页面地址发生变化');
+    const modals = await visibleProductUploadElements(driver, By, PRODUCT_UPLOAD_PREVIEW_MODAL);
+    const grids = await visibleProductUploadElements(driver, By, `${previewRoot} #online-spreadsheet-workbook`);
+    const confirmations = await visibleProductUploadElements(driver, By, `${previewRoot} kat-modal#submit-products-confirmation-modal[visible]:not([visible="false"])`);
+    if (modals.length !== 1 || grids.length !== 1 || confirmations.length) {
+      throw new ZiniaoError('上传预览或业务确认状态不允许关闭导览', { code: 'UPLOAD_PREVIEW_TOUR_BLOCKED' });
+    }
+    return { modalId: await modals[0].getId(), gridId: await grids[0].getId() };
+  };
+  const original = await inspectPreview();
+  const samePreview = async () => {
+    const current = await inspectPreview();
+    if (current.modalId !== original.modalId || current.gridId !== original.gridId) {
+      throw new ZiniaoError('关闭导览期间上传预览发生变化');
+    }
+  };
+  const beforeSafety = await classifyLivePageSafety({ zn, storeId });
+  if (!beforeSafety.safe) throw new ZiniaoError('关闭上传导览前完整页面安全检查未通过');
+  await samePreview();
+  const currentOverlays = await visibleProductUploadElements(driver, By, PRODUCT_UPLOAD_TOUR_OVERLAY);
+  if (currentOverlays.length !== 1 || await currentOverlays[0].getId() !== await overlays[0].getId()) {
+    throw new ZiniaoError('上传导览在关闭前发生变化');
+  }
+  if (!isApprovedProductBulkUploadUrl(await driver.getCurrentUrl())) throw new ZiniaoError('关闭上传导览前页面地址发生变化');
+  // Amazon's ProductTour explicitly enables Escape. Use its normal keyboard
+  // dismissal; never remove an overlay or retry an intercepted submit click.
+  // This allowance is consumed before the key action, across prepare/submit.
+  state.escapeSent = true;
+  await driver.actions().sendKeys(Key.ESCAPE).perform();
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    await samePreview();
+    const remaining = await visibleProductUploadElements(driver, By, PRODUCT_UPLOAD_TOUR_OVERLAY);
+    if (!remaining.length) {
+      const afterSafety = await classifyLivePageSafety({ zn, storeId });
+      if (!afterSafety.safe) throw new ZiniaoError('关闭上传导览后完整页面安全检查未通过');
+      await samePreview();
+      return;
+    }
+    if (remaining.length !== 1) throw new ZiniaoError('关闭上传导览后出现多个遮罩');
+    await zn.sleep(250);
+  }
+  throw new ZiniaoError('上传预览导览未关闭，已停止提交', { code: 'UPLOAD_PREVIEW_TOUR_BLOCKED' });
+}
+
+async function productUploadPreviewControl(driver, By, action) {
+  const selector = PRODUCT_UPLOAD_PREVIEW_SELECTORS[action];
+  if (!selector) throw new ZiniaoError('未知的上传预览操作');
+  if (action === 'submit') {
+    const previewRoot = `${PRODUCT_UPLOAD_PREVIEW_MODAL} .online-spreadsheet-root`;
+    const blockers = await driver.findElements(By.css(`${previewRoot} kat-progress,${previewRoot} #onlineSpreadsheetErrorBanner,${previewRoot} #allSkuFailedToLoadBanner,${previewRoot} .submit-in-progress-spinner-wrapper`));
+    for (const blocker of blockers) if (await blocker.isDisplayed()) return null;
+    const grids = await driver.findElements(By.css(`${previewRoot} #online-spreadsheet-workbook`));
+    if (grids.length !== 1 || !await grids[0].isDisplayed()) return null;
+  }
+  const controls = await driver.findElements(By.css(selector));
+  const ready = [];
+  for (const control of controls) {
+    // Detached controls may disappear while introspection finishes. A read
+    // failure must not make another control eligible or trigger a click.
+    if (!await control.isDisplayed() || !await control.isEnabled()) continue;
+    const disabled = await control.getAttribute('disabled');
+    const ariaDisabled = String(await control.getAttribute('aria-disabled') || '').toLowerCase().trim();
+    const loadingAttribute = await control.getAttribute('loading');
+    const loading = String(loadingAttribute ?? '').toLowerCase().trim();
+    if (disabled !== null || (ariaDisabled && ariaDisabled !== 'false')
+      || (loadingAttribute !== null && loading !== 'false')) continue;
+    const label = String(await control.getAttribute('label') || await control.getText() || '').replace(/\s+/g, ' ').trim();
+    if (label) ready.push({ control, label });
+  }
+  if (ready.length > 1) throw new ZiniaoError('上传预览操作控件不唯一，已拒绝点击');
+  return ready[0] || null;
+}
+
+export function productUploadReceiptReference(value) {
+  const url = approvedAmazonUrl(value);
+  if (!url || url.hostname !== 'sellercentral.amazon.com' || url.port || url.hash
+    || url.pathname !== '/listing/status'
+    || url.searchParams.getAll('reference_id').length !== 1
+    || url.searchParams.getAll('account_id').length !== 1
+    || !url.searchParams.get('account_id')) return null;
+  const batchId = url.searchParams.get('reference_id');
+  return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/.test(batchId || '') ? batchId : null;
+}
+
+async function readProductUploadReceipt(driver, batchId, expectedFileName) {
+  // The status app marks the row matching reference_id AND account_id with
+  // this class. Read only its visible batch and file-name cells, including
+  // KAT's shadow DOM; do not inspect its action payloads or other history rows.
+  const receipt = await driver.executeScript(
+    'var batch=arguments[0],name=arguments[1],tables=document.querySelectorAll("#submission-status-table");'
+    + 'if(tables.length!==1||String(tables[0].tagName).toLowerCase()!=="kat-data-table")return null;var table=tables[0],roots=[table],seen=[],nodes=0,cells=[];if(table.shadowRoot)roots.push(table.shadowRoot);'
+    + 'for(var r=0;r<roots.length&&r<256&&nodes<12000;r++){var root=roots[r];if(seen.indexOf(root)>=0)continue;seen.push(root);'
+    + 'var all=root.querySelectorAll("*");for(var i=0;i<all.length;i++){if(++nodes>12000)return null;'
+    + 'var el=all[i];if(el.shadowRoot&&roots.indexOf(el.shadowRoot)<0)roots.push(el.shadowRoot);'
+    + 'var id=el.getAttribute("data-cy-id")||"";if(/^(?:feed-batch-id|feed-batch-link|file-name-and-date):row-[0-9]+$/.test(id))cells.push(el);}}'
+    + 'if(roots.length>256||nodes>=12000)return null;var matched=[];'
+    + 'function visible(el){if(el.getClientRects().length===0)return false;var cur=el,depth=0;'
+    + 'while(cur&&depth++<256){var st=getComputedStyle(cur);if(cur.hidden===true||st.display==="none"||st.visibility==="hidden"||st.visibility==="collapse"||Number(st.opacity)===0)return false;'
+    + 'var root=cur.getRootNode();cur=cur.parentElement||(root&&root.host)||null;}return !cur;}'
+    + 'if(!visible(table))return null;'
+    + 'for(var c=0;c<cells.length;c++){var cell=cells[c],key=cell.getAttribute("data-cy-id")||"";'
+    + 'if(!/^feed-batch-(?:id|link):row-[0-9]+$/.test(key)||!visible(cell)||!cell.classList.contains("latest-submission-table-row"))continue;'
+    + 'if(String(cell.innerText||cell.textContent||"").trim()!==batch)continue;'
+    + 'var row=key.match(/row-[0-9]+$/)[0],files=cells.filter(function(x){return x.getAttribute("data-cy-id")==="file-name-and-date:"+row&&visible(x)&&x.classList.contains("latest-submission-table-row");});'
+    + 'if(files.length!==1)continue;var names=files[0].querySelectorAll(".file-name-content > b");'
+    + 'if(names.length!==1||!visible(names[0])||String(names[0].textContent||"").trim()!==name)continue;matched.push(row);}'
+    + 'return matched.length===1?{version:1,source:"AMAZON_UPLOAD_STATUS_ROW",batchId:batch,fileNameMatched:true,latestRowMatched:true}:null;',
+    batchId, expectedFileName,
+  );
+  return receipt?.version === 1 && receipt.source === 'AMAZON_UPLOAD_STATUS_ROW'
+    && receipt.batchId === batchId && receipt.fileNameMatched === true && receipt.latestRowMatched === true
+    ? { version: 1, source: 'AMAZON_UPLOAD_STATUS_ROW', batchId, fileNameMatched: true, latestRowMatched: true } : null;
 }
 
 async function findProductUploadFileInputs(driver, By) {
@@ -2788,6 +2965,263 @@ export class ZiniaoWebDriver {
     return driver.wait(until.elementLocated(By.css(selector)), timeoutMs);
   }
 
+  /** Read an already accepted batch. No file controls or upload actions occur
+   * here. The embedded status route and KAT row data were verified on the
+   * corresponding store browser; row data alone is not enough evidence. */
+  async readProductUploadProcessing(storeId, { batchId, expectedFileName, timeoutMs = 120000 } = {}) {
+    if (typeof batchId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/.test(batchId)
+      || typeof expectedFileName !== 'string' || !/^payload\.(?:xlsx|txt|tsv|csv)$/.test(expectedFileName)) {
+      throw new ZiniaoError('处理结果批次绑定无效', { code: 'PROCESSING_BINDING_INVALID' });
+    }
+    const { driver } = this.session(storeId);
+    const target = 'https://sellercentral.amazon.com/product-search/bulk/status';
+    const deadline = Date.now() + Math.max(10000, Math.min(180000, Number(timeoutMs) || 120000));
+    const assertLocation = async () => {
+      if (await driver.getCurrentUrl() !== target) {
+        throw new ZiniaoError('处理结果页地址发生变化', { code: 'PROCESSING_PAGE_CHANGED' });
+      }
+    };
+    const initial = await driver.getCurrentUrl();
+    if (!isApprovedProductBulkUploadUrl(initial) && initial !== target) {
+      throw new ZiniaoError('处理结果采集未从对应店铺上传页进入', { code: 'PROCESSING_PAGE_CHANGED' });
+    }
+    if (!(await classifyLivePageSafety({ zn: this, storeId })).safe) {
+      throw new ZiniaoError('处理结果读取前页面安全检查未通过', { code: 'PROCESSING_PAGE_UNSAFE' });
+    }
+    if (initial !== target) await driver.get(target);
+    let evidence;
+    while (Date.now() < deadline) {
+      await assertLocation();
+      const ready = await driver.executeScript('var t=document.querySelector("kat-data-table#submission-status-table");return !!t&&Array.isArray(t.rowData)&&t.rowData.length>0;');
+      if (!ready) { await this.sleep(1000); continue; }
+      if (!(await classifyLivePageSafety({ zn: this, storeId })).safe) {
+        throw new ZiniaoError('处理结果表格页面安全检查未通过', { code: 'PROCESSING_PAGE_UNSAFE' });
+      }
+      await assertLocation();
+      evidence = await driver.executeScript(function (batch, fileName) {
+        function text(el) { return String(el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim(); }
+        function visible(el) {
+          if (!el || !el.getClientRects().length) return false;
+          var cur = el, depth = 0;
+          while (cur && depth++ < 256) {
+            var style = getComputedStyle(cur);
+            if (cur.hidden || style.display === 'none' || style.visibility === 'hidden'
+              || style.visibility === 'collapse' || Number(style.opacity) === 0) return false;
+            cur = cur.parentElement || cur.getRootNode().host || null;
+          }
+          return !cur;
+        }
+        var tables = document.querySelectorAll('kat-data-table#submission-status-table');
+        if (tables.length !== 1 || !visible(tables[0])) return null;
+        var table = tables[0], data = table.rowData;
+        if (!Array.isArray(data) || data.length > 500) return null;
+        var rows = data.filter(function (row) {
+          var a = row.batchId, b = row.feedIdentifier && row.feedIdentifier.batchId;
+          return (a === batch || b === batch) && (!a || !b || a === b);
+        });
+        if (rows.length !== 1 || rows[0].originalFileName !== fileName) return null;
+        var roots = [table], seen = [], cells = [], nodes = 0;
+        if (table.shadowRoot) roots.push(table.shadowRoot);
+        for (var r = 0; r < roots.length && r < 256 && nodes < 20000; r++) {
+          var root = roots[r];
+          if (seen.indexOf(root) >= 0) continue;
+          seen.push(root);
+          var all = root.querySelectorAll('*');
+          for (var n = 0; n < all.length; n++) {
+            if (++nodes >= 20000) return null;
+            var el = all[n];
+            if (el.shadowRoot && roots.indexOf(el.shadowRoot) < 0) roots.push(el.shadowRoot);
+            if (el.hasAttribute('data-cy-id')) cells.push(el);
+          }
+        }
+        if (roots.length > 256) return null;
+        var batchCells = cells.filter(function (el) {
+          return /^feed-batch-(?:id|link):row-[0-9]+$/.test(el.getAttribute('data-cy-id'))
+            && visible(el) && text(el) === batch;
+        });
+        if (batchCells.length !== 1) return null;
+        var rowKey = batchCells[0].getAttribute('data-cy-id').match(/row-[0-9]+$/)[0];
+        var fileCells = cells.filter(function (el) { return el.getAttribute('data-cy-id') === 'file-name-and-date:' + rowKey && visible(el); });
+        if (fileCells.length !== 1) return null;
+        var names = fileCells[0].querySelectorAll('.file-name-content > b');
+        if (names.length !== 1 || !visible(names[0]) || text(names[0]) !== fileName) return null;
+        var countCells = cells.filter(function (el) { return el.getAttribute('data-cy-id') === 'feed-records-submitted-count:' + rowKey && visible(el); });
+        if (countCells.length !== 1) return null;
+        var statusCells = cells.filter(function (el) { return el.getAttribute('data-cy-id') === 'status-indicator:' + rowKey && visible(el); });
+        if (statusCells.length !== 1) return null;
+        var badges = Array.prototype.slice.call(statusCells[0].querySelectorAll('kat-badge'));
+        if (!badges.length || badges.some(function (el) { return !visible(el); })) return null;
+        function status(part) {
+          var stats = part && part.processingStatistics;
+          var name = part && part.processingState && part.processingState.name;
+          return {
+            processingState: { name: typeof name === 'string' ? name.slice(0, 80) : null },
+            processingStatistics: stats ? {
+              numRecordsSuccessful: stats.numRecordsSuccessful,
+              numRecordsSubmitted: stats.numRecordsSubmitted,
+            } : null,
+          };
+        }
+        var row = rows[0], sanitized = status(row);
+        sanitized.feedIdentifier = { batchId: batch };
+        sanitized.submissionDate = row.submissionDate;
+        if (!Array.isArray(row.splitStatuses) || row.splitStatuses.length > 20) return null;
+        sanitized.splitStatuses = row.splitStatuses.map(status);
+        return { row: sanitized, batchId: batch, fileNameMatched: true, domCounts: text(countCells[0]),
+          badges: badges.map(function (el) { return { type: el.getAttribute('type'), label: el.getAttribute('label') }; }) };
+      }, batchId, expectedFileName);
+      if (evidence) break;
+      await this.sleep(1000);
+    }
+    await assertLocation();
+    if (!(await classifyLivePageSafety({ zn: this, storeId })).safe) {
+      throw new ZiniaoError('处理结果读取后页面安全检查未通过', { code: 'PROCESSING_PAGE_UNSAFE' });
+    }
+    await assertLocation();
+    if (!evidence || evidence.batchId !== batchId || evidence.fileNameMatched !== true) {
+      throw new ZiniaoError('未取得当前批次与文件一致的处理记录', { code: 'PROCESSING_BATCH_NOT_FOUND' });
+    }
+    const snapshot = normalizeProductUploadStatusRow(evidence.row);
+    if (snapshot.batchId !== batchId) throw new ZiniaoError('处理结果批次不一致', { code: 'PROCESSING_BINDING_INVALID' });
+    // The live DONE row renders one visible success badge (label "完成").
+    // Do not accept a completed result while the visible UI says otherwise.
+    if (['COMPLETED', 'COMPLETED_WITH_WARNINGS'].includes(snapshot.status)
+      && (evidence.badges?.length !== 1 || evidence.badges[0].type !== 'success'
+        || !String(evidence.badges[0].label || '').trim())) {
+      throw new ZiniaoError('处理状态与可见页面不一致', { code: 'PROCESSING_EVIDENCE_CONFLICT' });
+    }
+    if (snapshot.counts.success !== null && snapshot.counts.submitted !== null) {
+      const visibleCounts = String(evidence.domCounts || '').replace(/[,\s]/g, '');
+      if (visibleCounts !== `${snapshot.counts.success}/${snapshot.counts.submitted}`) {
+        throw new ZiniaoError('处理结果统计与可见页面不一致', { code: 'PROCESSING_EVIDENCE_CONFLICT' });
+      }
+    }
+    this.session(storeId).productUploadReadBinding = { batchId, expectedFileName, at: Date.now() };
+    return snapshot;
+  }
+
+  /** Download only the current batch's verified read-only summary action.
+   * The signed/account-bearing link remains inside the Ziniao browser. */
+  async readProductUploadProcessingReport(storeId, { batchId, expectedFileName, timeoutMs = 120000 } = {}) {
+    const session = this.session(storeId), { driver } = session, binding = session.productUploadReadBinding;
+    session.productUploadReadBinding = null;
+    if (!binding || binding.batchId !== batchId || binding.expectedFileName !== expectedFileName
+      || Date.now() - binding.at > 30000) throw new ZiniaoError('处理报告缺少本次页面核对', { code: 'PROCESSING_REPORT_BINDING_INVALID' });
+    const target = 'https://sellercentral.amazon.com/product-search/bulk/status';
+    const safe = async () => {
+      if (await driver.getCurrentUrl() !== target || !(await classifyLivePageSafety({ zn: this, storeId })).safe
+        || await driver.getCurrentUrl() !== target) {
+        throw new ZiniaoError('处理报告页面安全检查未通过', { code: 'PROCESSING_REPORT_PAGE_UNSAFE' });
+      }
+    };
+    await safe();
+    const timeout = Math.max(10000, Math.min(180000, Number(timeoutMs) || 120000));
+    const previousTimeouts = await driver.manage().getTimeouts();
+    let response;
+    try {
+      await driver.manage().setTimeouts({ script: timeout + 5000 });
+      response = await driver.executeAsyncScript(function (batch, fileName, timeout, done) {
+        (async function () {
+          function visible(el) {
+            if (!el || !el.getClientRects().length) return false;
+            var cur = el, depth = 0;
+            while (cur && depth++ < 256) {
+              var s = getComputedStyle(cur);
+              if (cur.hidden || s.display === 'none' || s.visibility === 'hidden' || s.visibility === 'collapse' || Number(s.opacity) === 0) return false;
+              cur = cur.parentElement || cur.getRootNode().host || null;
+            }
+            return !cur;
+          }
+          function text(el) { return String(el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim(); }
+          var tables = document.querySelectorAll('kat-data-table#submission-status-table');
+          if (tables.length !== 1 || !visible(tables[0])) return { code: 'BINDING_INVALID' };
+          var table = tables[0], rows = Array.isArray(table.rowData) ? table.rowData.filter(function (row) {
+            var a = row.batchId, b = row.feedIdentifier && row.feedIdentifier.batchId;
+            return (a === batch || b === batch) && (!a || !b || a === b);
+          }) : [];
+          if (rows.length !== 1 || rows[0].originalFileName !== fileName) return { code: 'BINDING_INVALID' };
+          var row = rows[0], splits = row.splitStatuses;
+          if (!Array.isArray(splits) || splits.length !== 1 || !Array.isArray(splits[0].actions)
+            || splits[0].actions.length !== 1) return { code: 'NOT_AVAILABLE' };
+          var action = splits[0].actions[0], config = action.actionConfig || {};
+          if (action.translationStringId !== 'status:download_processing_summary'
+            || config.requestType !== undefined || config.delay) return { code: 'NOT_AVAILABLE' };
+          var link = new URL(action.link, location.origin);
+          if (link.origin !== 'https://sellercentral.amazon.com' || link.pathname !== '/listing/api/status/feeds/download'
+            || link.username || link.password || link.hash || link.searchParams.getAll('batchId').length !== 1
+            || link.searchParams.get('batchId') !== batch || link.searchParams.getAll('merchantId').length !== 1
+            || !link.searchParams.get('merchantId') || link.searchParams.getAll('frpRegion').length > 1
+            || Array.from(link.searchParams.keys()).some(function (key) { return ['batchId', 'merchantId', 'frpRegion'].indexOf(key) < 0; })) return { code: 'BINDING_INVALID' };
+          var directMerchant = row.merchantId, nestedMerchant = row.feedIdentifier && row.feedIdentifier.merchantId;
+          var merchant = directMerchant || nestedMerchant;
+          if (typeof merchant !== 'string' || !merchant || directMerchant && nestedMerchant && directMerchant !== nestedMerchant
+            || link.searchParams.get('merchantId') !== merchant) return { code: 'BINDING_INVALID' };
+          var roots = [table], cells = [], nodes = 0;
+          if (table.shadowRoot) roots.push(table.shadowRoot);
+          for (var r = 0; r < roots.length && r < 256; r++) {
+            var all = roots[r].querySelectorAll('*');
+            for (var i = 0; i < all.length; i++) {
+              if (++nodes >= 20000) return { code: 'BINDING_INVALID' };
+              var el = all[i];
+              if (el.shadowRoot && roots.indexOf(el.shadowRoot) < 0) roots.push(el.shadowRoot);
+              if (el.hasAttribute('data-cy-id')) cells.push(el);
+            }
+          }
+          if (roots.length > 256) return { code: 'BINDING_INVALID' };
+          var batchCells = cells.filter(function (el) { return /^feed-batch-(?:id|link):row-[0-9]+$/.test(el.getAttribute('data-cy-id')) && visible(el) && text(el) === batch; });
+          if (batchCells.length !== 1) return { code: 'BINDING_INVALID' };
+          var key = batchCells[0].getAttribute('data-cy-id').match(/row-[0-9]+$/)[0];
+          var files = cells.filter(function (el) { return el.getAttribute('data-cy-id') === 'file-name-and-date:' + key && visible(el); });
+          var names = files.length === 1 ? files[0].querySelectorAll('.file-name-content > b') : [];
+          if (names.length !== 1 || !visible(names[0]) || text(names[0]) !== fileName) return { code: 'BINDING_INVALID' };
+          var actions = cells.filter(function (el) { return el.getAttribute('data-cy-id') === 'actions-container:' + key && visible(el); });
+          var buttons = actions.length === 1 ? actions[0].querySelectorAll('kat-button.actions-button') : [];
+          if (buttons.length !== 1 || !visible(buttons[0]) || buttons[0].disabled === true
+            || buttons[0].hasAttribute('disabled') || buttons[0].getAttribute('aria-disabled') === 'true') return { code: 'NOT_AVAILABLE' };
+          var controller = new AbortController(), timer = setTimeout(function () { controller.abort(); }, timeout);
+          try {
+            var response = await fetch(link.href, { method: 'GET', credentials: 'same-origin', redirect: 'error', signal: controller.signal });
+            var type = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+            var disposition = response.headers.get('content-disposition') || '';
+            var filenameExtension = /\.(xlsx|xlsm|csv|tsv|txt)(?:["';\s]|$)/i.exec(disposition);
+            var extension = type === 'application/vnd.ms-excel.sheet.macroenabled.12' ? '.xlsm'
+              : type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ? '.xlsx'
+              : filenameExtension ? '.' + filenameExtension[1].toLowerCase() : null;
+            var lengthHeader = response.headers.get('content-length'), declared = lengthHeader === null ? null : Number(lengthHeader), limit = 20 * 1024 * 1024;
+            var types = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel.sheet.macroenabled.12',
+              'application/octet-stream', 'text/csv', 'text/tab-separated-values', 'text/plain'];
+            if (response.status !== 200 || response.redirected || new URL(response.url).origin !== location.origin
+              || !/^attachment(?:;|$)/i.test(disposition) || !extension || types.indexOf(type) < 0
+              || lengthHeader !== null && (!/^[0-9]+$/.test(lengthHeader) || !Number.isSafeInteger(declared) || declared < 0 || declared > limit)) {
+              if (response.body) await response.body.cancel();
+              return { code: 'RESPONSE_INVALID' };
+            }
+            var reader = response.body.getReader(), chunks = [], size = 0;
+            while (true) {
+              var next = await reader.read(); if (next.done) break;
+              size += next.value.length;
+              if (size > limit) { await reader.cancel(); return { code: 'TOO_LARGE' }; }
+              chunks.push(next.value);
+            }
+            if (!size || declared !== null && size !== declared) return { code: 'RESPONSE_INVALID' };
+            var bytes = new Uint8Array(size), offset = 0, binary = '';
+            chunks.forEach(function (chunk) { bytes.set(chunk, offset); offset += chunk.length; });
+            for (var n = 0; n < size; n += 32768) binary += String.fromCharCode.apply(null, bytes.subarray(n, n + 32768));
+            return { code: 'FILE', base64: btoa(binary), extension: extension, size: size };
+          } finally { clearTimeout(timer); }
+        })().then(done).catch(function () { done({ code: 'READ_FAILED' }); });
+      }, batchId, expectedFileName, timeout);
+    } finally { await driver.manage().setTimeouts({ script: previousTimeouts.script }); }
+    await safe();
+    if (response?.code === 'NOT_AVAILABLE') return null;
+    if (response?.code !== 'FILE' || typeof response.base64 !== 'string' || response.base64.length > 28 * 1024 * 1024) {
+      throw new ZiniaoError('处理报告未能安全读取', { code: 'PROCESSING_REPORT_READ_FAILED' });
+    }
+    const buffer = Buffer.from(response.base64, 'base64');
+    if (buffer.length !== response.size || buffer.length > 20 * 1024 * 1024) throw new ZiniaoError('处理报告大小无效', { code: 'PROCESSING_REPORT_READ_FAILED' });
+    return { buffer, extension: response.extension };
+  }
+
   /**
    * Dedicated, narrowly-scoped write path for a user-confirmed Seller Central
    * bulk product upload. Ordinary collectors never call these methods.
@@ -2839,6 +3273,132 @@ export class ZiniaoWebDriver {
     };
   }
 
+  /**
+   * Read the current upload failure scene without selecting or submitting a
+   * file. screenshotBase64 is private transport output: callers must keep it
+   * out of task results, logs and public APIs. No page text or file name is
+   * returned. A failed safety check discards both the summary and screenshot.
+   */
+  async captureProductBulkUploadDiagnostic(storeId, { expectedSize } = {}) {
+    const validityFields = ['valid', 'valueMissing', 'typeMismatch', 'patternMismatch', 'tooLong',
+      'tooShort', 'rangeUnderflow', 'rangeOverflow', 'stepMismatch', 'badInput', 'customError'];
+    const safetyReasons = new Set(['CURRENT_URL_UNAVAILABLE', 'UNAPPROVED_AMAZON_HOST', 'ACCESS_BLOCKED',
+      'AUTH_SENSITIVE', 'URL_ALLOWED', 'LIVE_SAFETY_PROBE_UNAVAILABLE',
+      'PAGE_CHANGED_DURING_LIVE_SAFETY_PROBE', 'LIVE_SAFETY_PROBE_INCOMPLETE', 'LIVE_PAGE_NON_SENSITIVE']);
+    const probeCounts = ['discoveredRootCount', 'scannedRootCount', 'discoveredElementCount',
+      'scannedElementCount', 'candidateNodeCount', 'visibleFrameCount', 'unreadableVisibleFrameCount',
+      'traversalErrorCount', 'nonFrameTraversalErrorCount', 'unreadableFrameErrorCount',
+      'opaqueOverlayFrameCount', 'opaqueAuthHintCount', 'opaqueBlockedHintCount',
+      'rootBudget', 'elementBudget', 'nodeBudget', 'unreadableFrameBudget'];
+    const probeFlags = ['accessibleTraversalComplete', 'mainDocumentTraversalComplete',
+      'rootBudgetExceeded', 'elementBudgetExceeded', 'nodeBudgetExceeded', 'unreadableFrameBudgetExceeded'];
+    const unavailableSafety = stage => ({ stage, reason: 'CURRENT_URL_UNAVAILABLE', exactUrl: null,
+      authSensitive: false, blocked: false, liveProbeDiagnostics: null });
+    let safety = unavailableSafety('START');
+    const retainSafety = (live, stage, exactUrl) => {
+      const diagnostics = {};
+      for (const field of probeCounts) {
+        const value = live?.liveProbeDiagnostics?.[field];
+        if (Number.isSafeInteger(value) && value >= 0 && value <= 10_000_000) diagnostics[field] = value;
+      }
+      for (const field of probeFlags) {
+        const value = live?.liveProbeDiagnostics?.[field];
+        if (typeof value === 'boolean') diagnostics[field] = value;
+      }
+      return { stage, reason: safetyReasons.has(live?.code) ? live.code : null, exactUrl,
+        authSensitive: live?.authSensitive === true, blocked: live?.blocked === true,
+        liveProbeDiagnostics: Object.keys(diagnostics).length ? diagnostics : null };
+    };
+    const emptySummary = (status = 'UNAVAILABLE') => ({ version: 1, status, inputCount: null,
+      selectedFileCount: null, singleSelectedFileSizeMatches: null, inputs: [] });
+    const blocked = (status = 'UNSAFE_PAGE') => ({ safety, summary: emptySummary(status),
+      screenshotStatus: 'BLOCKED', screenshotBase64: null });
+    let summary = emptySummary();
+    let driver;
+    try { ({ driver } = this.session(storeId)); }
+    catch { return { safety, summary, screenshotStatus: 'NOT_CAPTURED', screenshotBase64: null }; }
+    const safePage = async stage => {
+      safety = unavailableSafety(stage);
+      const currentUrl = await driver.getCurrentUrl();
+      const exactUrl = isApprovedProductBulkUploadUrl(currentUrl);
+      if (!exactUrl) {
+        safety = retainSafety(classifyUrlSafety(currentUrl), stage, false);
+        return false;
+      }
+      safety = { ...safety, exactUrl: true, reason: 'LIVE_SAFETY_PROBE_UNAVAILABLE' };
+      const live = await classifyLivePageSafety({ zn: this, storeId });
+      safety = retainSafety(live, stage, true);
+      return live?.safe === true;
+    };
+    try { if (!await safePage('START')) return blocked(); }
+    catch { return blocked('UNAVAILABLE'); }
+
+    try {
+      const { By } = await import('selenium-webdriver');
+      const inputs = await findProductUploadFileInputs(driver, By);
+      if (inputs.length > 32) {
+        summary = { ...emptySummary('LIMIT_EXCEEDED'), inputCount: inputs.length };
+      } else {
+        const raw = await driver.executeScript(
+          'var inputs=arguments[0],expected=arguments[1],fields=arguments[2],rows=[],total=0,onlySize=null;'
+          + 'for(var i=0;i<inputs.length;i++){try{var el=inputs[i];'
+          + 'if(!el||!el.isConnected||String(el.tagName).toLowerCase()!=="input"||el.type!=="file")return {complete:false};'
+          + 'var files=el.files,n=files&&files.length;'
+          + 'if(typeof n!=="number"||!isFinite(n)||n<0||Math.floor(n)!==n)return {complete:false};'
+          + 'if(n>1000)return {complete:false,limited:true};total+=n;'
+          + 'if(n===1){var size=files[0].size;onlySize=typeof size==="number"&&isFinite(size)&&size>=0&&Math.floor(size)===size?size:null;}'
+          + 'var validity={},nativeValidity=el.validity;'
+          + 'for(var j=0;j<fields.length;j++){var v=nativeValidity&&nativeValidity[fields[j]];validity[fields[j]]=typeof v==="boolean"?v:null;}'
+          + 'var aria=el.getAttribute("aria-invalid");aria=typeof aria==="string"?aria.trim().toLowerCase():null;'
+          + 'rows.push({validity:validity,ariaInvalid:aria==="true"?true:aria==="false"?false:null});'
+          + '}catch(ignore){return {complete:false};}}'
+          + 'return {complete:true,selectedFileCount:total,singleSelectedFileSizeMatches:total===1&&onlySize!==null&&expected!==null?onlySize===expected:null,inputs:rows};',
+          inputs, Number.isSafeInteger(expectedSize) && expectedSize > 0 ? expectedSize : null, validityFields,
+        );
+        const nullableBoolean = value => value === null || typeof value === 'boolean';
+        const valid = raw?.complete === true && Number.isSafeInteger(raw.selectedFileCount)
+          && raw.selectedFileCount >= 0 && raw.selectedFileCount <= inputs.length * 1000
+          && nullableBoolean(raw.singleSelectedFileSizeMatches)
+          && Array.isArray(raw.inputs) && raw.inputs.length === inputs.length
+          && raw.inputs.every(row => row && nullableBoolean(row.ariaInvalid)
+            && row.validity && validityFields.every(field => nullableBoolean(row.validity[field])));
+        if (valid) {
+          summary = { version: 1, status: 'AVAILABLE', inputCount: inputs.length,
+            selectedFileCount: raw.selectedFileCount,
+            singleSelectedFileSizeMatches: raw.selectedFileCount === 1 ? raw.singleSelectedFileSizeMatches : null,
+            inputs: raw.inputs.map(row => ({ validity: Object.fromEntries(validityFields.map(field => [field, row.validity[field]])),
+              ariaInvalid: row.ariaInvalid })) };
+        } else {
+          summary = { ...emptySummary(raw?.limited === true ? 'LIMIT_EXCEEDED' : 'UNAVAILABLE'), inputCount: inputs.length };
+        }
+      }
+    } catch { /* Never retain a page exception or an unvalidated result. */ }
+
+    // Recheck immediately before and after the one screenshot. The transport
+    // never writes the image, so unsafe or late results can simply be discarded.
+    try { if (!await safePage('BEFORE_SCREENSHOT')) return blocked(); }
+    catch { return blocked('UNAVAILABLE'); }
+    let screenshotBase64 = null;
+    let screenshotStatus = 'FAILED';
+    try {
+      const image = await driver.takeScreenshot();
+      const maxBytes = 8 * 1024 * 1024;
+      if (typeof image !== 'string') screenshotStatus = 'INVALID';
+      else if (image.length > Math.ceil(maxBytes / 3) * 4) screenshotStatus = 'TOO_LARGE';
+      else if (!image.length || image.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(image)) screenshotStatus = 'INVALID';
+      else {
+        const decoded = Buffer.from(image, 'base64');
+        if (decoded.length > maxBytes) screenshotStatus = 'TOO_LARGE';
+        else if (decoded.toString('base64') !== image
+          || !decoded.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))) screenshotStatus = 'INVALID';
+        else { screenshotStatus = 'AVAILABLE'; screenshotBase64 = image; }
+      }
+    } catch { /* The safe summary remains useful when the screenshot fails. */ }
+    try { if (!await safePage('AFTER_SCREENSHOT')) return blocked(); }
+    catch { return blocked('UNAVAILABLE'); }
+    return { safety, summary, screenshotStatus, screenshotBase64 };
+  }
+
   async prepareProductBulkUpload(storeId, payloadFile, { authorization, timeoutMs = 30000 } = {}) {
     const { driver } = this.session(storeId);
     const absoluteFile = path.resolve(String(payloadFile || ''));
@@ -2857,7 +3417,7 @@ export class ZiniaoWebDriver {
     }
     const live = await classifyLivePageSafety({ zn: this, storeId });
     if (!live.safe) throw new ZiniaoError('\u5546\u54c1\u4e0a\u4f20\u9875\u51fa\u73b0\u8ba4\u8bc1\u3001\u62e6\u622a\u6216\u4e0d\u53ef\u9a8c\u8bc1\u5185\u5bb9');
-    const { By } = await import('selenium-webdriver');
+    const { By, Key } = await import('selenium-webdriver');
     const inputs = await findProductUploadFileInputs(driver, By);
     const eligible = [];
     for (const input of inputs) {
@@ -2876,22 +3436,51 @@ export class ZiniaoWebDriver {
     const deadline = Date.now() + Math.max(5000, Number(timeoutMs || 30000));
     let submit = null;
     let submitLabel = '';
+    let previewOpened = false;
+    const previewTourState = { escapeSent: false };
+    let lastReadiness = null;
     while (!submit && Date.now() < deadline) {
       if (!isApprovedProductBulkUploadUrl(await driver.getCurrentUrl())) {
         throw new ZiniaoError('\u9009\u62e9\u6587\u4ef6\u540e\u9875\u9762\u79bb\u5f00\u5df2\u6279\u51c6\u7684\u6279\u91cf\u4e0a\u4f20\u5730\u5740');
       }
+      if (previewOpened) await dismissProductUploadPreviewTour(this, storeId, driver, By, Key, previewTourState);
+      const previewAction = previewOpened ? 'submit' : 'open';
+      const previewControl = await productUploadPreviewControl(driver, By, previewAction);
+      if (previewControl) {
+        const previewSafety = await classifyLivePageSafety({ zn: this, storeId });
+        if (!previewSafety.safe || !isApprovedProductBulkUploadUrl(await driver.getCurrentUrl())) {
+          throw new ZiniaoError('上传预览前完整页面安全检查未通过', { code: 'UPLOAD_PREVIEW_SAFETY_FAILED' });
+        }
+        const current = await productUploadPreviewControl(driver, By, previewAction);
+        if (!current || current.label !== previewControl.label) throw new ZiniaoError('上传预览控件在操作前发生变化');
+        if (!previewOpened) {
+          // This only opens the original-file preview. A lost click response
+          // propagates to UNKNOWN; the opener is never clicked a second time.
+          previewOpened = true;
+          if (!isApprovedProductBulkUploadUrl(await driver.getCurrentUrl())) throw new ZiniaoError('上传预览点击前页面地址发生变化');
+          await current.control.click();
+          await this.sleep(250);
+          continue;
+        }
+        submit = current.control;
+        submitLabel = current.label;
+        break;
+      }
+      if (previewOpened) {
+        await this.sleep(250);
+        continue;
+      }
       const controls = await driver.findElements(By.css('button,kat-button,[role="button"],input[type="submit"],input[type="button"]'));
+      // Only the last poll is retained. Never include page labels, attribute
+      // values or exception messages in the diagnostic.
+      lastReadiness = { total: controls.length, approvedLabels: 0, notDisplayed: 0,
+        nativeDisabled: 0, disabledAttribute: 0, ariaDisabled: 0, readErrors: 0 };
       const matches = [];
       for (const control of controls) {
         try {
-          const label = String(
-            (await control.getText()) || (await control.getAttribute('aria-label'))
-            || (await control.getAttribute('label')) || (await control.getAttribute('value')) || '',
-          ).replace(/\s+/g, ' ').trim();
-          if (isApprovedProductUploadSubmitLabel(label) && await control.isDisplayed() && await control.isEnabled()) {
-            matches.push({ control, label });
-          }
-        } catch { /* detached control */ }
+          const label = await productUploadSubmitControlLabel(control, lastReadiness);
+          if (label) matches.push({ control, label });
+        } catch { lastReadiness.readErrors++; }
       }
       if (matches.length > 1) throw new ZiniaoError('\u6279\u91cf\u4e0a\u4f20\u63d0\u4ea4\u63a7\u4ef6\u4e0d\u552f\u4e00\uff0c\u5df2\u62d2\u7edd\u70b9\u51fb');
       if (matches.length === 1) {
@@ -2901,11 +3490,20 @@ export class ZiniaoWebDriver {
       }
       await this.sleep(250);
     }
-    if (!submit) throw new ZiniaoError('\u6279\u91cf\u4e0a\u4f20\u63d0\u4ea4\u63a7\u4ef6\u672a\u5728\u7b49\u5f85\u671f\u5185\u5c31\u7eea');
+    if (!submit) {
+      if (previewOpened) throw new ZiniaoError('Amazon 文件预览的提交控件未在等待期内就绪', { code: 'UPLOAD_PREVIEW_SUBMIT_NOT_READY' });
+      const detail = lastReadiness
+        ? `最后一轮：控件总数=${lastReadiness.total}，白名单标签=${lastReadiness.approvedLabels}，不可见=${lastReadiness.notDisplayed}，原生禁用=${lastReadiness.nativeDisabled}，disabled禁用=${lastReadiness.disabledAttribute}，aria禁用=${lastReadiness.ariaDisabled}，读取异常=${lastReadiness.readErrors}`
+        : '未取得控件轮询结果';
+      throw new ZiniaoError(`批量上传提交控件未在等待期内就绪（${detail}）`, { code: 'UPLOAD_SUBMIT_CONTROL_NOT_READY' });
+    }
     const session = this.session(storeId);
     session.productUploadPrepared = {
       submit, submitLabel, preparedUrl: await driver.getCurrentUrl(),
       jobId: authorization.jobId, sha256: authorization.sha256,
+      flow: previewOpened ? 'AMAZON_TEMPLATE_PREVIEW' : 'DIRECT',
+      previewTourState,
+      fileName: path.basename(absoluteFile),
     };
     return { prepared: true, submitLabel, currentUrl: session.productUploadPrepared.preparedUrl };
   }
@@ -2924,25 +3522,55 @@ export class ZiniaoWebDriver {
       !prepared?.submit
       || prepared.jobId !== authorization.jobId
       || prepared.sha256 !== authorization.sha256
-      || !isApprovedProductBulkUploadUrl(await driver.getCurrentUrl())
     ) {
       throw new ZiniaoError('\u6279\u91cf\u4e0a\u4f20\u672a\u5b8c\u6210\u53ef\u9a8c\u8bc1\u7684\u63d0\u4ea4\u524d\u51c6\u5907');
     }
-    if (String(await driver.getCurrentUrl()) !== String(prepared.preparedUrl)) {
+    // Consume synchronously before any await: a lost click response or a
+    // concurrent caller must never reuse the same prepared write action.
+    session.productUploadPrepared = null;
+    const currentUrl = await driver.getCurrentUrl();
+    if (!isApprovedProductBulkUploadUrl(currentUrl) || String(currentUrl) !== String(prepared.preparedUrl)) {
       throw new ZiniaoError('\u6279\u91cf\u4e0a\u4f20\u9875\u5728\u63d0\u4ea4\u524d\u53d1\u751f\u53d8\u5316\uff0c\u5df2\u62d2\u7edd\u70b9\u51fb');
     }
     const live = await classifyLivePageSafety({ zn: this, storeId });
     if (!live.safe) throw new ZiniaoError('\u6279\u91cf\u4e0a\u4f20\u70b9\u51fb\u524d\u5b89\u5168\u63a2\u9488\u672a\u901a\u8fc7');
+    const { By, Key } = await import('selenium-webdriver');
+    const previewFlow = prepared.flow === 'AMAZON_TEMPLATE_PREVIEW';
+    if (previewFlow) await dismissProductUploadPreviewTour(this, storeId, driver, By, Key, prepared.previewTourState || { escapeSent: false });
     const beforeText = String((await this.content(storeId, { format: 'text' }))?.text || '').slice(0, 100000);
     const beforeLines = new Set(beforeText.split(/\r?\n/).map((line) => line.replace(/\s+/g, ' ').trim()).filter(Boolean));
     const deltaFromBefore = (text) => String(text || '').split(/\r?\n/)
       .map((line) => line.replace(/\s+/g, ' ').trim())
       .filter((line) => line && !beforeLines.has(line)).join('\n').slice(0, 50000);
-    await prepared.submit.click();
-    session.productUploadPrepared = null;
+    if (previewFlow) {
+      const existingModals = await driver.findElements(By.css(`${PRODUCT_UPLOAD_PREVIEW_MODAL} .online-spreadsheet-root kat-modal#submit-products-confirmation-modal[visible]:not([visible="false"])`));
+      for (const modal of existingModals) {
+        if (await modal.isDisplayed()) throw new ZiniaoError('提交前已存在上传确认弹窗，无法关联本次点击');
+      }
+    }
+    const previewSubmit = previewFlow ? await productUploadPreviewControl(driver, By, 'submit') : null;
+    const submitLabel = previewFlow ? previewSubmit?.label : await productUploadSubmitControlLabel(prepared.submit);
+    if (!submitLabel || submitLabel !== prepared.submitLabel) {
+      throw new ZiniaoError('批量上传提交控件在点击前不可用或已变化，已拒绝点击');
+    }
+    const finalSafety = await classifyLivePageSafety({ zn: this, storeId });
+    if (!finalSafety.safe || !isApprovedProductBulkUploadUrl(await driver.getCurrentUrl())) {
+      throw new ZiniaoError('批量上传实际点击前完整页面安全检查未通过');
+    }
+    const finalSubmit = previewFlow ? await productUploadPreviewControl(driver, By, 'submit') : null;
+    const finalLabel = previewFlow ? finalSubmit?.label : await productUploadSubmitControlLabel(prepared.submit);
+    if (!finalLabel || finalLabel !== prepared.submitLabel || !isApprovedProductBulkUploadUrl(await driver.getCurrentUrl())) {
+      throw new ZiniaoError('批量上传提交控件在安全检查后发生变化，已拒绝点击');
+    }
+    if (previewFlow && (await visibleProductUploadElements(driver, By, PRODUCT_UPLOAD_TOUR_OVERLAY)).length) {
+      throw new ZiniaoError('上传提交前再次出现导览遮罩，已停止提交', { code: 'UPLOAD_PREVIEW_TOUR_BLOCKED' });
+    }
+    if (!isApprovedProductBulkUploadUrl(await driver.getCurrentUrl())) throw new ZiniaoError('上传实际点击前页面地址发生变化');
+    await (previewFlow ? finalSubmit.control : prepared.submit).click();
     const deadline = Date.now() + Math.max(30000, Number(timeoutMs || 120000));
     let lastText = '';
     let pageTextDelta = '';
+    let previewConfirmed = false;
     while (Date.now() < deadline) {
       const current = approvedAmazonUrl(await driver.getCurrentUrl());
       if (!current || current.hostname.toLowerCase() !== 'sellercentral.amazon.com') {
@@ -2950,6 +3578,47 @@ export class ZiniaoWebDriver {
       }
       const postSafety = await classifyLivePageSafety({ zn: this, storeId });
       if (!postSafety.safe) throw new ZiniaoError('\u6279\u91cf\u4e0a\u4f20\u540e\u9875\u9762\u51fa\u73b0\u8ba4\u8bc1\u3001\u62e6\u622a\u6216\u4e0d\u53ef\u9a8c\u8bc1\u5185\u5bb9');
+      const reference = productUploadReceiptReference(current.toString());
+      if (reference && prepared.fileName) {
+        const receipt = await readProductUploadReceipt(driver, reference, prepared.fileName);
+        const receiptSafety = await classifyLivePageSafety({ zn: this, storeId });
+        if (!receiptSafety.safe || String(await driver.getCurrentUrl()) !== current.toString()) {
+          throw new ZiniaoError('Amazon 上传回执读取期间页面发生变化');
+        }
+        if (receipt) return { receipt, pageTextDelta: '',
+          currentUrl: `https://sellercentral.amazon.com/listing/status?reference_id=${encodeURIComponent(reference)}` };
+        // A history title, old row or redirect alone never proves receipt.
+        await this.sleep(1000);
+        continue;
+      }
+      if (current.pathname === '/listing/status') {
+        pageTextDelta = '';
+        await this.sleep(1000);
+        continue;
+      }
+      if (previewFlow && !previewConfirmed && isApprovedProductBulkUploadUrl(current.toString())) {
+        const confirm = await productUploadPreviewControl(driver, By, 'confirm');
+        if (confirm) {
+          // Amazon can ask whether to submit the unchanged file despite its
+          // validation errors. This is part of the already-confirmed upload,
+          // not permission to edit cells or submit a selected subset of rows.
+          if (!isApprovedProductBulkUploadUrl(await driver.getCurrentUrl())) throw new ZiniaoError('上传确认前页面地址发生变化');
+          const currentConfirm = await productUploadPreviewControl(driver, By, 'confirm');
+          if (!currentConfirm || currentConfirm.label !== confirm.label) throw new ZiniaoError('上传确认控件在点击前发生变化');
+          const confirmSafety = await classifyLivePageSafety({ zn: this, storeId });
+          if (!confirmSafety.safe || !isApprovedProductBulkUploadUrl(await driver.getCurrentUrl())) {
+            throw new ZiniaoError('上传确认点击前完整页面安全检查未通过');
+          }
+          const finalConfirm = await productUploadPreviewControl(driver, By, 'confirm');
+          if (!finalConfirm || finalConfirm.label !== confirm.label || !isApprovedProductBulkUploadUrl(await driver.getCurrentUrl())) {
+            throw new ZiniaoError('上传确认控件在安全检查后发生变化，已拒绝点击');
+          }
+          previewConfirmed = true;
+          await finalConfirm.control.click();
+          await this.sleep(250);
+          continue;
+        }
+      }
       lastText = String((await this.content(storeId, { format: 'text' }))?.text || '').slice(0, 100000);
       pageTextDelta = deltaFromBefore(lastText);
       if (/(?:your file (?:has been |was )?uploaded|your file is being processed|upload (?:is )?(?:complete|successful)|file (?:was )?received for processing|upload failed|file (?:was )?rejected|invalid file|\u6587\u4ef6(?:\u5df2)?\u4e0a\u4f20(?:\u6210\u529f|\u5b8c\u6210)|\u6587\u4ef6\u5df2\u63a5\u6536|\u4e0a\u4f20\u5931\u8d25|\u6587\u4ef6\u88ab\u62d2\u7edd|\u6587\u4ef6\u65e0\u6548)/i.test(pageTextDelta)) break;

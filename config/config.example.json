@@ -128,6 +128,16 @@
     "retries": 2
   },
 
+  "productUpload": {
+    "_comment": "已接收批次的只读结果采集。上传总开关仍须启用；每次工作者最多查一个批次，与巡检共用运行锁。",
+    "results": {
+      "enabled": true,
+      "intervalMinutes": 5,
+      "maxAgeHours": 72,
+      "timeoutMs": 120000
+    }
+  },
+
   "schedule": {
     "_comment": "北京时间。npm run schedule:install 调用 src/schedule.js 生成当前平台计划；Linux 正式部署使用 deploy/systemd/ 中的固定 timer，修改此处不会改写已安装 timer。",
     "timezone": "Asia/Shanghai",
