@@ -721,6 +721,9 @@ test('upload reset rejects every active state and an occupied collector lease wi
     await error(await f.mutation('/api/product-uploads/reset', 'POST', payload, task.csrf), 409);
     assert.deepEqual(snapshot(uploads), before);
   }
+  // A response can reach this process before the server finishes releasing
+  // its lease. A subsequent request is a barrier before installing our lock.
+  await body(await f.request('/api/health'));
   fs.writeFileSync(task.recordFile, original);
   const lockFile = path.join(f.out, 'runtime/run.lock');
   const lock = JSON.stringify({ version: 1, token: crypto.randomUUID(), pid: process.pid, label: 'fixture-existing-collector', startedAt: new Date().toISOString() });
