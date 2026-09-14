@@ -1294,7 +1294,7 @@
         "type": "apiKey",
         "in": "cookie",
         "name": "__Host-amzguard_crm",
-        "description": "Dedicated opaque browser session from ticket exchange; one store, read-only, 30 minutes, Secure/HttpOnly/Path=/SameSite=Lax. Independent of Dashboard authentication. Scope is revalidated on access."
+        "description": "Dedicated opaque read-only browser session: default shared monitoring dashboard, or legacy single-store scope. Valid for 30 minutes; Secure, HttpOnly, Path=/, SameSite=Lax. Does not grant a local Dashboard role. Dashboard sessions use only the panel read paths, not the machine data API."
       },
       "CrmBrowserBinding": {
         "type": "apiKey",
@@ -1341,7 +1341,7 @@
           "results",
           "data"
         ],
-        "description": "Initial navigation hint only; storeKey is the authorization scope. A session can read all nine checks for its one authorized store."
+        "description": "Legacy single-store navigation hint. Both views can read all nine checks for the authorized store."
       },
       "Date": {
         "type": "string",
