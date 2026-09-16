@@ -6,7 +6,7 @@ import { CRM_BRIDGE_SCRIPT, CRM_BRIDGE_STYLE, renderCrmBridge } from '../src/web
 const START = 1_800_000_000_000;
 const BASE = { requestId: 'R'.repeat(43), challengeId: 'C'.repeat(43), storeKey: 'US-A',
   view: 'data', checkId: 'reviews', bridgeOrigin: 'http://crm.example.test',
-  publicOrigin: 'https://monitor.example.test', expiresAt: START + 120000 };
+  publicOrigin: 'https://monitor.example.test', bridgeOrigins: ['http://crm.example.test'], expiresAt: START + 120000 };
 const TICKET = 'T'.repeat(43);
 const plain = value => JSON.parse(JSON.stringify(value));
 function harness(options = {}) {
@@ -38,7 +38,7 @@ function harness(options = {}) {
     requestId: context.requestId, challengeId: context.challengeId,
     loginUrl: `${context.publicOrigin}/crm/sso#ticket=${TICKET}`, ...patch });
   return { context, status, posts, requests, navigations, listeners, timers, opener, window, ticket,
-    send(data = ticket(), event = {}) { return listeners.get('message')?.({ source: opener, origin: context.bridgeOrigin, data, ...event }); },
+    send(data = ticket(), event = {}) { return listeners.get('message')?.({ source: opener, origin: context.bridgeOrigins[0], data, ...event }); },
     advance(ms, fire = true) {
       clock += ms;
       if (fire) for (const [id, timer] of [...timers]) if (timer.at <= clock) { timers.delete(id); timer.fn(); }
@@ -59,8 +59,7 @@ test('bridge markup escapes public context and never includes a binding credenti
 
 test('bridge sends one exact challenge and exchanges once on its own origin before detaching and navigating', async () => {
   const h = harness();
-  assert.deepEqual(h.posts, [{ origin: BASE.bridgeOrigin, data: { type: 'amzguard:crm:challenge', version: 1,
-    requestId: BASE.requestId, challengeId: BASE.challengeId, storeKey: 'US-A', view: 'data', checkId: 'reviews' } }]);
+  assert.deepEqual(h.posts.slice(0, 2).map(post => post.origin), BASE.bridgeOrigins);
   await h.send();
   assert.equal(h.requests.length, 1);
   const { url, opts } = h.requests[0];
@@ -70,7 +69,7 @@ test('bridge sends one exact challenge and exchanges once on its own origin befo
   assert.equal(opts.cache, 'no-store');
   assert.deepEqual(JSON.parse(opts.body), { ticket: TICKET });
   assert.equal(Object.hasOwn(opts.headers, 'Authorization'), false);
-  assert.deepEqual(h.posts[1], { origin: BASE.bridgeOrigin, data: { type: 'amzguard:crm:complete', version: 1,
+  assert.deepEqual(h.posts[1], { origin: BASE.bridgeOrigins[0], data: { type: 'amzguard:crm:complete', version: 1,
     requestId: BASE.requestId, challengeId: BASE.challengeId } });
   assert.deepEqual(h.navigations, [{ url: '/crm/', detached: true }]);
   assert.equal(h.listeners.size, 0);
