@@ -320,8 +320,11 @@ test('popup mode is optional and accepts only one exact external HTTP or HTTPS o
     assert.deepEqual(f.access.publicConfig().ssoModes, ['popup']);
     assert.equal(f.access.publicConfig().ssoAvailable, true);
     rejects(() => f.access.beginChallenge(f.dest), 503, 'CRM_SSO_UNAVAILABLE');
-    assert.equal(f.access.beginBridge({ ...f.dest, requestId: 'R'.repeat(43) }).bridgeOrigin, origin);
+    assert.equal(f.access.beginBridge({ ...f.dest, requestId: 'R'.repeat(43) }).bridgeOrigins[0], origin);
   }
+  const httpsCrm = fixture({ env: { AMZGUARD_CRM_CALLBACK_URL: '', AMZGUARD_CRM_BRIDGE_ORIGIN: 'https://amzcrm.pc51.com' } });
+  assert.deepEqual(httpsCrm.access.publicConfig().ssoModes, ['popup']);
+  assert.equal(httpsCrm.access.beginBridge({ ...httpsCrm.dest, requestId: 'R'.repeat(43) }).bridgeOrigins[0], 'https://amzcrm.pc51.com');
   for (const origin of ['*', 'http://*.example.test', 'http://crm.example.test/', 'http://crm.example.test/path',
     'http://user:pass@crm.example.test', 'http://crm.example.test?x', 'http://crm.example.test#x',
     'http://crm.example.test?', 'http://crm.example.test#', 'http://crm.example.test\\evil',

@@ -64,15 +64,22 @@ function httpsUrl(value, originOnly = false) {
   return originOnly ? url.origin : url.href;
 }
 
-function bridgeOrigin(value, publicOrigin) {
-  let url;
-  try { url = new URL(value); } catch { /* reject below */ }
-  if (!url || /[\s\\*]/u.test(value) || !['http:', 'https:'].includes(url.protocol)
-    || url.username || url.password || url.search || url.hash || value !== url.origin
-    || url.origin === publicOrigin) {
-    throw failure(503, 'CRM_CONFIG_INVALID', 'CRM bridge must use one exact external HTTP or HTTPS origin');
-  }
-  return url.origin;
+function bridgeOrigins(value, publicOrigin) {
+  if (typeof value !== 'string' || !value) throw failure(503, 'CRM_CONFIG_INVALID', 'CRM bridge must use exact external HTTP or HTTPS origins');
+  const origins = value.split(',');
+  if (!origins.length || origins.some(item => item !== item.trim())) throw failure(503, 'CRM_CONFIG_INVALID', 'CRM bridge origins must not contain surrounding whitespace');
+  const normalized = origins.map(item => item.trim());
+  if (new Set(normalized).size !== normalized.length) throw failure(503, 'CRM_CONFIG_INVALID', 'CRM bridge origins must be unique');
+  return normalized.map(item => {
+    let url;
+    try { url = new URL(item); } catch { /* reject below */ }
+    if (!url || /[\s\\*]/u.test(item) || !['http:', 'https:'].includes(url.protocol)
+      || url.username || url.password || url.search || url.hash || item !== url.origin
+      || url.origin === publicOrigin) {
+      throw failure(503, 'CRM_CONFIG_INVALID', 'CRM bridge must use exact external HTTP or HTTPS origins');
+    }
+    return url.origin;
+  });
 }
 
 /**
@@ -136,14 +143,14 @@ export function createCrmAccess({ env = process.env, stores = [], now = Date.now
     }
     const publicOrigin = httpsUrl(origin, true);
     const callbackUrl = callback ? httpsUrl(callback) : null;
-    const configuredBridgeOrigin = bridge ? bridgeOrigin(bridge, publicOrigin) : null;
-    const ssoModes = [...(callbackUrl ? ['redirect'] : []), ...(configuredBridgeOrigin ? ['popup'] : [])];
-    const version = digest(JSON.stringify([clientId, apiToken, storeKeys, publicOrigin, callbackUrl, configuredBridgeOrigin]));
+    const configuredBridgeOrigins = bridge ? bridgeOrigins(bridge, publicOrigin) : [];
+    const ssoModes = [...(callbackUrl ? ['redirect'] : []), ...(configuredBridgeOrigins.length ? ['popup'] : [])];
+    const version = digest(JSON.stringify([clientId, apiToken, storeKeys, publicOrigin, callbackUrl, configuredBridgeOrigins]));
     if (priorVersion !== version) {
       challenges.clear(); tickets.clear(); sessions.clear(); priorVersion = version;
     }
     return { enabled: true, clientId, apiToken, storeKeys, publicOrigin, callbackUrl,
-      bridgeOrigin: configuredBridgeOrigin, ssoAvailable: ssoModes.length > 0, ssoModes, version };
+      bridgeOrigins: configuredBridgeOrigins, ssoAvailable: ssoModes.length > 0, ssoModes, version };
   }
 
   function settings() {
@@ -276,14 +283,14 @@ export function createCrmAccess({ env = process.env, stores = [], now = Date.now
     /** Popup correlation is public transport metadata, never ticket scope or authentication. */
     beginBridge(input) {
       const config = requireEnabled();
-      if (!config.bridgeOrigin) throw failure(503, 'CRM_BRIDGE_UNAVAILABLE', 'CRM popup bridge is not configured');
+      if (!config.bridgeOrigins.length) throw failure(503, 'CRM_BRIDGE_UNAVAILABLE', 'CRM popup bridge is not configured');
       strictObject(input, ['storeKey', 'checkId', 'view', 'requestId']);
       if (typeof input.requestId !== 'string' || !TOKEN_RE.test(input.requestId)) {
         throw failure(400, 'CRM_INVALID_REQUEST_ID', 'A valid popup requestId is required');
       }
       const { scope, ...started } = begin(config, { storeKey: input.storeKey, checkId: input.checkId, view: input.view });
       return { ...started, ...scope, requestId: input.requestId,
-        bridgeOrigin: config.bridgeOrigin, publicOrigin: config.publicOrigin };
+        bridgeOrigins: config.bridgeOrigins, publicOrigin: config.publicOrigin };
     },
 
     /** Only an authenticated machine principal can assert the CRM subject and issue a ticket. */

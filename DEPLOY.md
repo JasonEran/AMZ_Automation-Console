@@ -286,6 +286,7 @@ journalctl -u amzguard-collector-health.service -n 80 --no-pager
 sudo systemctl start --no-block 'amzguard-manual@store-health:XCAI.service'
 journalctl -fu 'amzguard-manual@store-health:XCAI.service'
 ```
+生产示例：`AMZGUARD_CRM_BRIDGE_ORIGIN=https://amzcrm.pc51.com`。该值是唯一精确 HTTPS origin；不得写成带路径、尾斜杠、query、fragment 或通配符的地址。
 
 将 `XCAI` 替换成当前有效店铺清单中仅含字母、数字、点、下划线或连字符的真实 `key`。单店健康通过后，按失败项针对性补跑；不要直接用普通 Chrome 验证 Amazon。
 

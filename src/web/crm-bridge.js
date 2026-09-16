@@ -11,6 +11,7 @@ function crmBridge() {
   const opener = window.opener;
   let finished = false;
   let accepted = false;
+  let acceptedOrigin;
   let timer;
   let controller;
   const remaining = Math.min(120000, context.expiresAt - Date.now());
@@ -33,7 +34,7 @@ function crmBridge() {
       && fields.every(key => Object.prototype.hasOwnProperty.call(data, key));
   }
   async function receive(event) {
-    if (finished || accepted || event.source !== opener || window.opener !== opener || event.origin !== context.bridgeOrigin) return;
+    if (finished || accepted || event.source !== opener || window.opener !== opener || !context.bridgeOrigins.includes(event.origin)) return;
     const data = event.data;
     const fields = ['type', 'version', 'requestId', 'challengeId'];
     const ticketMessage = data && data.type === 'amzguard:crm:ticket';
@@ -42,6 +43,7 @@ function crmBridge() {
       || (!ticketMessage && data.type !== 'amzguard:crm:error')) return;
     if (opener.closed || Date.now() >= deadline) { fail('握手已结束，请关闭窗口后从 CRM 重新进入。'); return; }
     accepted = true;
+    acceptedOrigin = event.origin;
     window.removeEventListener('message', receive);
     if (!ticketMessage) { fail('CRM 未完成授权，请关闭窗口并核对访问权限。'); return; }
     const prefix = context.publicOrigin + '/crm/sso#ticket=';
@@ -63,7 +65,7 @@ function crmBridge() {
       if (body?.data?.location !== '/crm/') throw new Error('location');
       if (window.opener !== opener || opener.closed || Date.now() >= deadline) throw new Error('opener');
       opener.postMessage({ type: 'amzguard:crm:complete', version: 1,
-        requestId: context.requestId, challengeId: context.challengeId }, context.bridgeOrigin);
+        requestId: context.requestId, challengeId: context.challengeId }, acceptedOrigin);
       finished = true;
       cleanup();
       window.opener = null;
@@ -79,17 +81,17 @@ function crmBridge() {
   timer = setTimeout(() => fail('握手已过期，请关闭窗口后从 CRM 重新进入。'), remaining);
   window.addEventListener('message', receive);
   try {
-    opener.postMessage({ type: 'amzguard:crm:challenge', version: 1,
+    for (const origin of context.bridgeOrigins) opener.postMessage({ type: 'amzguard:crm:challenge', version: 1,
       requestId: context.requestId, challengeId: context.challengeId,
-      storeKey: context.storeKey, view: context.view, checkId: context.checkId }, context.bridgeOrigin);
+      storeKey: context.storeKey, view: context.view, checkId: context.checkId }, origin);
   } catch { fail('无法连接 CRM 窗口，请关闭后重新进入。'); }
 }
 
 /** Only public handshake metadata is rendered; the separate binding token is cookie-only. */
 export function renderCrmBridge({ requestId, challengeId, storeKey, view, checkId,
-  bridgeOrigin, publicOrigin, expiresAt }) {
+  bridgeOrigins, publicOrigin, expiresAt }) {
   const context = JSON.stringify({ requestId, challengeId, storeKey, view, checkId,
-    bridgeOrigin, publicOrigin, expiresAt }).replace(/[<>&\u2028\u2029]/g,
+    bridgeOrigins, bridgeOrigin: bridgeOrigins && bridgeOrigins[0], publicOrigin, expiresAt }).replace(/[<>&\u2028\u2029]/g,
     character => '\\u' + character.charCodeAt(0).toString(16).padStart(4, '0'));
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CRM 只读访问</title><style>${CRM_BRIDGE_STYLE}</style></head><body><main class="bridge-card"><h1>连接店铺监测</h1><p id="crmBridgeStatus" role="status" aria-live="polite">正在等待 CRM 授权…</p><p class="hint">此入口仅查看已保存数据。握手有效期为 2 分钟。</p></main><script type="application/json" id="crmBridgeContext">${context}</script><script>${CRM_BRIDGE_SCRIPT}</script></body></html>`;
 }
