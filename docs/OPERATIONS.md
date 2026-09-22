@@ -190,8 +190,11 @@ Amazon Ads 可能同时下发旧固定 ID 筛选器和新版 KAT/Shadow DOM 筛�
 | `PATCH /api/admin/stores/{key}` | `{expectedRevision, patch}`，只提交已改字段，不能改 key；成功 200 |
 | `GET /api/ui-config` | 已登录 Dashboard 用户读取 `{revision, source, settings, csrfToken, canManage}` |
 | `PUT /api/admin/ui-config` | 管理员提交 `{expectedRevision, settings}`，settings 包含全部六项；成功 200 |
+| `POST /api/admin/ziniao/restart` | 管理员提交空对象 `{}`。只执行 `systemctl restart amzguard-ziniao.service`。采集进程持有 `run.lock`，或采集单元为 active/activating 时返回 409 并不重启。本机没有该单元或 systemd 不可用时返回错误，不视为成功 |
 
 写请求使用同源 `application/json` 和 Dashboard 会话，并将 GET 返回的 `csrfToken` 放入 `x-amzguard-csrf` 请求头；正文最多 32 KiB，不接受 query 或未知字段。成功写入返回最新完整上下文；错误为 `{ok:false,error,code?}`（既有登录/CSRF错误可能没有 code）。401 重新登录，403 核对管理员身份/CSRF，409 核对配置版本、活动任务或上传保护，400/415 修正字段或类型，503 检查损坏配置或权限。无删除店铺接口；历史报告不会被这些接口改写。凭据、任意 Amazon 路径、实际采集排程、CRM 网络推送和上传双闸仍由各自受保护配置管理。
+
+店铺配置页的“重启紫鸟”使用上表重启接口，确认后才会请求。它不接受单元名称，也不会重启 Xvfb、看板或 Nginx。生产机上该操作依赖 `deploy/polkit/50-amzguard-ziniao-restart.rules`：只允许 `ubuntu` 对 `amzguard-ziniao.service` 执行 `restart`。部署脚本会安装这条规则；未安装时接口返回明确失败，而不是显示已重启。
 
 ## 手动补跑
 

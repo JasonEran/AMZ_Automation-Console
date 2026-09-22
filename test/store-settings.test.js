@@ -65,7 +65,10 @@ test('settings are bundled in the existing shell and every rendered script compi
   assert.match(DASHBOARD_HTML, /data-view-panel="stores"/);
   const scripts = [...DASHBOARD_HTML.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)];
   for (const [, script] of scripts) assert.doesNotThrow(() => new vm.Script(script));
-  assert.doesNotMatch(installStoreSettings.toString(), /innerHTML|\/api\/crm|\/api\/product-uploads|\/api\/.*run/);
+  const settingsSource = installStoreSettings.toString().replace('/api/admin/ziniao/restart', '');
+  assert.doesNotMatch(settingsSource, /innerHTML|\/api\/crm|\/api\/product-uploads|\/api\/.*run/);
+  assert.match(DASHBOARD_HTML, /id="ziniaoRestart"/);
+  assert.match(DASHBOARD_HTML, /重启紫鸟/);
   assert.match(DASHBOARD_HTML, /initializeSettings\.then/);
   assert.match(DASHBOARD_HTML, /Math\.min\(displaySettings\.listPageSize,50\)/);
   for (const [, pattern] of STORE_SETTINGS_MARKUP.matchAll(/pattern="([^"]+)"/g)) assert.doesNotThrow(() => new RegExp(pattern, 'v'));
@@ -76,8 +79,10 @@ test('operators can read display settings but cannot load or submit store admini
   assert.equal(f.controller.getDefaultView(), 'overview');
   assert.equal(f.nodes.get('uiSettingsFields').disabled, true);
   assert.equal(f.nodes.get('storeSettingsNew').disabled, true);
+  assert.equal(f.nodes.get('ziniaoRestart').disabled, true);
   assert.match(f.nodes.get('storeSettingsStatus').textContent, /只有管理员/);
   await f.nodes.get('storeSettingsForm').emit('submit'); await f.nodes.get('uiSettingsForm').emit('submit');
+  await f.nodes.get('ziniaoRestart').emit('click');
   assert.deepEqual(f.calls.map(call => call.url), ['/api/ui-config']);
 });
 
@@ -149,6 +154,39 @@ test('display conflicts retain draft and revision, while a slow read cannot over
   await f.nodes.get('uiSettingsForm').emit('submit');
   assert.equal(f.calls.find(call => call.method === 'PUT').payload.expectedRevision, 'ui:r1');
   assert.equal(f.nodes.get('uiReportRefresh').value, '90'); assert.match(f.nodes.get('uiSettingsMessage').textContent, /草稿已保留/);
+});
+
+test('ziniao restart confirms once and posts only the fixed admin action', async () => {
+  const f = fixture({ handle: call => call.url === '/api/admin/ziniao/restart'
+    ? response({ ok: true, unit: 'amzguard-ziniao.service', message: '已重启紫鸟。已打开的店铺浏览器已关闭。' }) : null });
+  await f.boot();
+  assert.match(STORE_SETTINGS_MARKUP, /id="ziniaoRestart"[^>]*>重启紫鸟</);
+  assert.equal(f.nodes.get('ziniaoRestart').disabled, false);
+  f.confirm(false);
+  const before = f.calls.length;
+  await f.nodes.get('ziniaoRestart').emit('click');
+  assert.equal(f.calls.length, before);
+  assert.match(f.nodes.get('ziniaoRestartMessage').textContent, /已取消重启/);
+  f.confirm(true);
+  await f.nodes.get('ziniaoRestart').emit('click');
+  const call = f.calls.at(-1);
+  assert.equal(call.url, '/api/admin/ziniao/restart');
+  assert.equal(call.method, 'POST');
+  assert.deepEqual(call.payload, {});
+  assert.equal(call.headers['x-amzguard-csrf'], 'ui-csrf');
+  assert.match(f.nodes.get('ziniaoRestartMessage').textContent, /已重启紫鸟/);
+  assert.equal(f.nodes.get('ziniaoRestart').disabled, false);
+});
+
+test('ziniao restart shows a lock refusal without treating it as success', async () => {
+  const f = fixture({ handle: call => call.url === '/api/admin/ziniao/restart'
+    ? response({ ok: false, code: 'ZINIAO_RESTART_LOCKED', error: '采集进程仍持有运行锁（pid=9，任务=check:reviews），已拒绝重启紫鸟。' }, 409) : null });
+  await f.boot();
+  f.confirm(true);
+  await f.nodes.get('ziniaoRestart').emit('click');
+  assert.match(f.nodes.get('ziniaoRestartMessage').className, /bad/);
+  assert.match(f.nodes.get('ziniaoRestartMessage').textContent, /运行锁/);
+  assert.equal(f.nodes.get('ziniaoRestart').disabled, false);
 });
 
 test('expired or revoked administration clears protected binding controls and fails closed', async () => {

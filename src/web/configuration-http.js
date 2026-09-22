@@ -2,6 +2,7 @@ import { acquireRunLock, releaseRunLock } from '../checks/run.js';
 import { readAdsRules } from '../lib/ads-rules.js';
 import { STORE_MARKETS, STORE_HOSTS, storeBindingChanged } from '../lib/store-registry.js';
 import { assertStoreUploadBindingIdle } from '../lib/store-change-guard.js';
+import { restartZiniaoService } from '../lib/ziniao-restart.js';
 
 const fail = (status, code, message) => Object.assign(new Error(message), { status, code });
 function payloadFields(payload, fields) {
@@ -12,7 +13,9 @@ function payloadFields(payload, fields) {
 }
 
 /** Dashboard administration only. Caller checks the local Dashboard session;
- * CRM identities never reach this handler. No collection or external requests.
+ * CRM identities never reach this handler. Store edits do not collect.
+ * The only spawned command is `systemctl restart amzguard-ziniao.service`,
+ * and only after the run lock and collection-unit checks pass.
  */
 export function createConfigurationHttp({ outDir, registry, uiConfig, json, readJsonRequest,
   validAdminRole, requireProtectedMutation, csrfToken, sessionClaims, refreshStores }) {
@@ -36,10 +39,11 @@ export function createConfigurationHttp({ outDir, registry, uiConfig, json, read
     const p = url.pathname;
     const isStore = p === '/api/admin/stores', isStoreItem = p.startsWith('/api/admin/stores/');
     const isUiRead = p === '/api/ui-config', isUiWrite = p === '/api/admin/ui-config';
-    if (!isStore && !isStoreItem && !isUiRead && !isUiWrite) return false;
+    const isZiniaoRestart = p === '/api/admin/ziniao/restart';
+    if (!isStore && !isStoreItem && !isUiRead && !isUiWrite && !isZiniaoRestart) return false;
     try {
       if (!isUiRead && !validAdminRole(req)) throw fail(403, 'CONFIG_ADMIN_REQUIRED', '需要 Dashboard 管理员权限');
-      const allowed = isStore ? ['GET', 'POST'] : isStoreItem ? ['PATCH'] : isUiRead ? ['GET'] : ['PUT'];
+      const allowed = isZiniaoRestart ? ['POST'] : isStore ? ['GET', 'POST'] : isStoreItem ? ['PATCH'] : isUiRead ? ['GET'] : ['PUT'];
       if (!allowed.includes(req.method)) {
         res.setHeader('Allow', allowed.join(', '));
         throw fail(405, 'CONFIG_METHOD_NOT_ALLOWED', '此配置接口不支持该方法');
@@ -53,6 +57,11 @@ export function createConfigurationHttp({ outDir, registry, uiConfig, json, read
       const payload = await readJsonRequest(req);
       if (!validAdminRole(req)) throw fail(403, 'CONFIG_ADMIN_REQUIRED', '管理员会话已失效，请重新登录');
       const actor = sessionClaims(req)?.username || 'local-admin';
+      if (isZiniaoRestart) {
+        payloadFields(payload, []);
+        json(res, 200, await restartZiniaoService({ outDir }));
+        return true;
+      }
       if (isUiWrite) {
         payloadFields(payload, ['expectedRevision', 'settings']);
         uiConfig.save({ ...payload, actor });
