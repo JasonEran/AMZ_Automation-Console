@@ -153,6 +153,7 @@ amzguard-cert-renew.service
 amzguard-channel-test.service
 amzguard-product-upload.service
 amzguard-intelligence.service
+amzguard-collection-recovery.service
 '
 guarded_path_units='
 amzguard-product-upload.path

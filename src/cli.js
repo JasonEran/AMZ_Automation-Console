@@ -22,6 +22,8 @@ const USAGE = `亚马逊自动巡检 (紫鸟 WebDriver/Selenium + Codex)
   run-slot <name>   跑一个批次的全部检查 (am|ads-off|pm|ads-on)
   run-check <id>    跑单个检查项 (store-health|performance|feedback|inbox|reviews|
                     asin-health|outlet|voc|ads-status)
+  collection-recovery
+                    执行槽次退出后留下的一次只读补采；没有补采请求时立即退出
   checks            列出 9 个检查项与排程时段
   serve             启动看板 + 接收 API（默认 4173 端口）
   store-health      第 1 项：店铺健康状态检查 (Policy Compliance)
@@ -472,11 +474,14 @@ async function cmdRun({ config, stores, storesMissing, storesPath, logger, args,
   const opts = { concurrency: config.ziniao.concurrency, asin: args.asin };
   let summaries;
   let slotHadFatal = false;
+  let slotRecovery = null;
   if (mode === 'slot') {
     const out = await runSlot({ slot: target, zn, config, stores: selected, logger, opts });
     summaries = Object.values(out.checks);
     slotHadFatal = Object.keys(out.errors).length > 0;
     for (const [id, err] of Object.entries(out.errors)) logger.error(`[${id}] ${redactText(err)}`);
+    out.slot = target;
+    slotRecovery = out;
   } else {
     summaries = [await runCheckById({ id: target, zn, config, stores: selected, logger, opts: { ...opts, slot: args.slot || 'adhoc' } })];
   }
@@ -508,9 +513,51 @@ async function cmdRun({ config, stores, storesMissing, storesPath, logger, args,
   logger.plain('='.repeat(58));
   logger.plain(`看板: http://127.0.0.1:${process.env.PORT || 4173}/  （或 npm run serve 启动）`);
 
+  if (mode === 'slot' && slotRecovery && anyInfrastructureFailure) {
+    try {
+      const { collectorLockReason } = await import('./lib/ziniao-restart.js');
+      const recovery = await import('./lib/collection-recovery.js');
+      let logText = '';
+      try { logText = recovery.readZiniaoClientLog(); }
+      catch (error) { logger.warn(`[recovery] 未能读取紫鸟启动日志，startBrowser 超时不会触发重启。${redactText(error?.message || error)}`); }
+      const decision = recovery.planSlotRecovery({
+        slot: target,
+        slotOut: slotRecovery,
+        slots: config.schedule?.slots || [],
+        logText,
+        lockHeld: Boolean(collectorLockReason(config.outDir)),
+      });
+      logger.warn(`[recovery] ${decision.message}`);
+      if (decision.arm) recovery.writeRecoveryRequest(config.outDir, decision.plan);
+    } catch (error) {
+      logger.error(`[recovery] 未能提交自动补采，失败结果保持可见。${redactText(error?.message || error)}`);
+    }
+  }
+
   if (!anyRan) return 2;
   if (anyInfrastructureFailure) return 2;
   return anyProblem ? 1 : 0;
+}
+
+async function cmdCollectionRecovery({ config, logger }) {
+  const { claimAndRunRecovery, recoveryExitCode, readZiniaoClientLog } = await import('./lib/collection-recovery.js');
+  const { collectorLockReason, restartZiniaoService } = await import('./lib/ziniao-restart.js');
+  const outcome = await claimAndRunRecovery({
+    outDir: config.outDir,
+    logger,
+    readLog: () => {
+      try { return readZiniaoClientLog(); }
+      catch (error) {
+        logger.warn(`[recovery] 未能读取紫鸟启动日志。${redactText(error?.message || error)}`);
+        return '';
+      }
+    },
+    lockReason: () => collectorLockReason(config.outDir),
+    restart: () => restartZiniaoService({ outDir: config.outDir }),
+  });
+  if (outcome.action === 'idle') logger.info('[recovery] 没有待执行的补采请求。');
+  else logger.warn(`[recovery] 补采结束 action=${outcome.action} reason=${outcome.reason || '-'} restart=${outcome.restartedZiniao ? 'yes' : 'no'}`);
+  return recoveryExitCode(outcome);
 }
 
 async function main() {
@@ -552,6 +599,8 @@ async function main() {
         return await cmdRun({ config, stores, storesMissing, storesPath, logger, args, mode: 'slot' });
       case 'run-check':
         return await cmdRun({ config, stores, storesMissing, storesPath, logger, args, mode: 'check' });
+      case 'collection-recovery':
+        return await cmdCollectionRecovery({ config, logger });
       case 'serve':
         await import('./server.js');
         return await new Promise(() => {}); // server owns the process from here
