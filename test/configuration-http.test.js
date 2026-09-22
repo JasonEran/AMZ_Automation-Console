@@ -293,22 +293,43 @@ test('configuration permissions isolate operators and CRM identities and enforce
   await error(await f.request('/api/admin/stores', { headers: { Cookie: operator } }), 403, 'CONFIG_ADMIN_REQUIRED');
   await error(await f.mutation('/api/admin/stores', 'POST', { expectedRevision: adminStores.revision, store: NEW_STORE }, operatorUi.csrfToken, operator), 403, 'CONFIG_ADMIN_REQUIRED');
   await error(await f.mutation('/api/admin/ui-config', 'PUT', { expectedRevision: adminUi.revision, settings: DEFAULTS }, operatorUi.csrfToken, operator), 403, 'CONFIG_ADMIN_REQUIRED');
+  await error(await f.mutation('/api/admin/ziniao/restart', 'POST', {}, operatorUi.csrfToken, operator), 403, 'CONFIG_ADMIN_REQUIRED');
   const crmCookie = await f.crmLogin();
-  for (const endpoint of ['/api/admin/stores', '/api/ui-config']) {
+  for (const endpoint of ['/api/admin/stores', '/api/ui-config', '/api/admin/ziniao/restart']) {
     for (const headers of [{}, { Authorization: `Bearer ${CRM_TOKEN}` }, { Cookie: crmCookie }]) await error(await f.request(endpoint, { headers }), 401);
   }
   for (const extra of [{ 'X-Amzguard-CSRF': '' }, { 'X-Amzguard-CSRF': 'wrong' },
     { Origin: 'https://other.example.test' }, { 'Sec-Fetch-Site': 'cross-site' }]) {
     await error(await f.mutation('/api/admin/stores', 'POST', { expectedRevision: adminStores.revision, store: NEW_STORE }, adminStores.csrfToken, f.admin, extra), 403);
     await error(await f.mutation('/api/admin/ui-config', 'PUT', { expectedRevision: adminUi.revision, settings: DEFAULTS }, adminUi.csrfToken, f.admin, extra), 403);
+    await error(await f.mutation('/api/admin/ziniao/restart', 'POST', {}, adminUi.csrfToken, f.admin, extra), 403);
   }
   for (const [endpoint, method, allow] of [['/api/admin/stores', 'DELETE', 'GET, POST'], ['/api/admin/stores/US-A', 'DELETE', 'PATCH'],
-    ['/api/admin/ui-config', 'POST', 'PUT'], ['/api/ui-config', 'PUT', 'GET']]) {
+    ['/api/admin/ui-config', 'POST', 'PUT'], ['/api/ui-config', 'PUT', 'GET'], ['/api/admin/ziniao/restart', 'GET', 'POST']]) {
     const response = await f.request(endpoint, { method, headers: { Cookie: f.admin } });
     assert.equal(response.headers.get('allow'), allow); await error(response, 405, 'CONFIG_METHOD_NOT_ALLOWED');
   }
   for (const endpoint of ['/api/admin/stores?unknown=1', '/api/ui-config?unknown=1']) await error(await f.request(endpoint, { headers: { Cookie: f.admin } }), 400, 'CONFIG_INVALID_QUERY');
+  await error(await f.mutation('/api/admin/ziniao/restart?unit=nginx.service', 'POST', {}, adminUi.csrfToken), 400, 'CONFIG_INVALID_QUERY');
+  await error(await f.mutation('/api/admin/ziniao/restart', 'POST', { unit: 'nginx.service' }, adminUi.csrfToken), 400, 'CONFIG_INVALID_BODY');
   assert.equal(fs.existsSync(f.registryFile), false); assert.equal(fs.existsSync(f.uiFile), false);
+});
+
+test('ziniao restart refuses a live collector lock and does not call systemctl', async t => {
+  const f = await fixture(t);
+  const runtime = path.join(f.out, 'runtime');
+  fs.mkdirSync(runtime, { recursive: true });
+  fs.writeFileSync(path.join(runtime, 'run.lock'), `${JSON.stringify({
+    version: 1, token: 'do-not-echo', pid: process.pid, label: 'check:reviews', startedAt: '2026-09-22T02:00:00.000Z',
+  })}\n`);
+  const log = path.join(f.temp, 'systemctl.log');
+  fs.writeFileSync(path.join(f.temp, 'bin', 'systemctl'), `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(log)}\nexit 1\n`, { mode: 0o755 });
+  const ui = await f.getUi();
+  const denied = await error(await f.mutation('/api/admin/ziniao/restart', 'POST', {}, ui.csrfToken), 409, 'ZINIAO_RESTART_LOCKED');
+  assert.match(denied.error, /运行锁/);
+  assert.match(denied.error, /check:reviews/);
+  assert.doesNotMatch(denied.error, /do-not-echo/);
+  assert.equal(fs.existsSync(log), false);
 });
 
 test('store validation, unknown fields and optimistic revisions reject unsafe or stale writes without data loss', async t => {

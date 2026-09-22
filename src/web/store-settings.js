@@ -9,6 +9,10 @@ export const STORE_SETTINGS_STYLES = `
 
 export const STORE_SETTINGS_MARKUP = `<div class="view" data-view-panel="stores">
   <div class="page-intro"><div><h2>店铺配置</h2><p>管理店铺接入与看板显示。保存配置不会立即发起 Amazon 采样。</p></div></div>
+  <section class="section" id="ziniaoRestartCard">
+    <div class="section-head"><div><h3>紫鸟服务</h3><p>只重启 amzguard-ziniao.service。采集进行中会拒绝，不会重启其他服务。</p></div><button class="primary" id="ziniaoRestart" type="button" disabled>重启紫鸟</button></div>
+    <div class="settings-card"><p class="store-settings-note">重启会关闭已打开的店铺浏览器。若采集进程持有运行锁，或采集单元仍在运行，重启会被拒绝并说明原因。</p><div class="settings-message" id="ziniaoRestartMessage" role="status"></div></div>
+  </section>
   <section class="section" id="storeRegistryCard">
     <div class="section-head"><div><h3>已配置店铺</h3><p>店铺标识长期保留；停用后保留历史记录。广告组合范围在<a href="#ads-watch" data-view="ads-watch">广告值守</a>中维护。</p></div><button class="primary" id="storeSettingsNew" type="button" disabled>新增店铺</button></div>
     <div class="store-settings-summary"><span id="storeSettingsStatus" role="status">正在读取权限…</span><button id="storeSettingsReload" type="button">重新加载配置</button></div>
@@ -58,7 +62,7 @@ export function installStoreSettings({ window, document, views, settingsDefaults
     listPageSize: ['uiListPageSize', 1, 100] };
   const defaults = { ...settingsDefaults };
   let registry = null, uiContext = null, uiSettings = { ...defaults }, editingKey = null, original = null;
-  let storeDirty = false, uiDirty = false, storeSaving = false, uiSaving = false, listPage = 1;
+  let storeDirty = false, uiDirty = false, storeSaving = false, uiSaving = false, listPage = 1, ziniaoRestarting = false;
   let storeLoading = null, uiLoading = null;
   const message = (id, text, kind = 'bad') => { const node = q('#' + id); node.textContent = text; node.className = 'settings-message ' + kind; };
   const element = (tag, text, className) => { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node; };
@@ -102,6 +106,7 @@ export function installStoreSettings({ window, document, views, settingsDefaults
     q('#uiSettingsFields').disabled = !canManage() || uiSaving;
     q('#uiSettingsAccess').textContent = canManage() ? '管理员可修改；保存后当前页面立即采用新设置。' : '当前账户可查看显示配置；只有管理员可以修改。';
     q('#uiSettingsDraft').textContent = uiDirty ? '有未保存的修改' : '';
+    q('#ziniaoRestart').disabled = !canManage() || ziniaoRestarting;
   }
   function storeFields() {
     return Object.fromEntries(Object.entries(fieldIds).map(([field, id]) => [field,
@@ -263,7 +268,24 @@ export function installStoreSettings({ window, document, views, settingsDefaults
     q('#storeSettingsForm').addEventListener(type, () => { if (canManage() && !storeSaving) { storeDirty = true; q('#storeSettingsDraft').textContent = '有未保存的修改'; } });
     q('#uiSettingsForm').addEventListener(type, () => { if (canManage() && !uiSaving) { uiDirty = true; q('#uiSettingsDraft').textContent = '有未保存的修改'; } });
   }
+  async function restartZiniao() {
+    if (!canManage() || ziniaoRestarting || !uiContext) return;
+    if (!window.confirm('重启紫鸟会关闭已打开的店铺浏览器。确定现在重启？')) {
+      message('ziniaoRestartMessage', '已取消重启。', 'neutral');
+      return;
+    }
+    ziniaoRestarting = true; q('#ziniaoRestart').disabled = true;
+    message('ziniaoRestartMessage', '正在重启紫鸟…', 'neutral');
+    try {
+      const body = await request('/api/admin/ziniao/restart', 'POST', {}, uiContext.csrfToken);
+      message('ziniaoRestartMessage', typeof body?.message === 'string' && body.message ? body.message : '已重启紫鸟。', 'ok');
+    } catch (error) {
+      if (error.status === 403 || error.status === 401) lostAccess();
+      message('ziniaoRestartMessage', error.message);
+    } finally { ziniaoRestarting = false; q('#ziniaoRestart').disabled = !canManage(); }
+  }
   q('#storeSettingsForm').addEventListener('submit', saveStore); q('#uiSettingsForm').addEventListener('submit', saveUi);
+  q('#ziniaoRestart').addEventListener('click', restartZiniao);
   return { loadUIConfig, refresh, activate: () => registry ? Promise.resolve(registry) : loadStores(),
     getSettings: () => ({ ...uiSettings }),
     getDefaultView: () => !canManage() && ['users', 'stores'].includes(uiSettings.defaultView) ? 'overview' : uiSettings.defaultView };

@@ -106,7 +106,7 @@ sudo systemctl restart amzguard-ziniao.service
 sudo systemctl start amzguard-collector-health.service
 ```
 
-这会关闭当前店铺浏览器，只能在没有运行任务时执行。
+这会关闭当前店铺浏览器，只能在没有运行任务时执行。店铺配置页的“重启紫鸟”只重启 `amzguard-ziniao.service`：采集进程持有 `out/runtime/run.lock`，或采集单元处于 active/activating 时会拒绝并说明原因。
 
 ## 4. 网络、WebDriver 或渲染器
 

@@ -1,0 +1,9 @@
+// Dashboard runs as ubuntu and may restart only the Ziniao WebDriver unit.
+// No other verb or unit is authorized. Install with deploy/install-linux.sh.
+polkit.addRule(function(action, subject) {
+  if (action.id !== "org.freedesktop.systemd1.manage-units") return;
+  if (subject.user !== "ubuntu") return;
+  if (action.lookup("unit") !== "amzguard-ziniao.service") return;
+  if (action.lookup("verb") !== "restart") return;
+  return polkit.Result.YES;
+});

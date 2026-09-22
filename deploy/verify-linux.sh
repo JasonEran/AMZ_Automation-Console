@@ -65,6 +65,8 @@ cmp -s "$app_dir/deploy/nginx/amzguard.conf" /etc/nginx/sites-available/amzguard
   || { echo "Nginx 站点启用链接不正确" >&2; exit 1; }
 cmp -s "$app_dir/deploy/logrotate/amzguard" /etc/logrotate.d/amzguard \
   || { echo "已安装 logrotate 配置与模板不一致" >&2; exit 1; }
+cmp -s "$app_dir/deploy/polkit/50-amzguard-ziniao-restart.rules" /etc/polkit-1/rules.d/50-amzguard-ziniao-restart.rules \
+  || { echo "紫鸟重启授权规则与模板不一致" >&2; exit 1; }
 grep -Fxq 'OnCalendar=*-*-* 08:00:00 Asia/Shanghai' /etc/systemd/system/amzguard-store-health-am.timer
 grep -Fxq 'OnCalendar=*-*-* 11:20:00 Asia/Shanghai' /etc/systemd/system/amzguard-store-health-ads-off.timer
 grep -Fxq 'OnCalendar=*-*-* 15:30:00 Asia/Shanghai' /etc/systemd/system/amzguard-store-health-pm.timer

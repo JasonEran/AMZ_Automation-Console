@@ -505,6 +505,8 @@ if test -e "$bootstrap_enabled" || test -L "$bootstrap_enabled"; then
 fi
 ln -sfn /etc/nginx/sites-available/amzguard /etc/nginx/sites-enabled/amzguard
 install -m 0644 "$app_dir/deploy/logrotate/amzguard" /etc/logrotate.d/amzguard
+install -d -m 0755 /etc/polkit-1/rules.d
+install -m 0644 "$app_dir/deploy/polkit/50-amzguard-ziniao-restart.rules" /etc/polkit-1/rules.d/50-amzguard-ziniao-restart.rules
 
 for nginx_log in /var/log/nginx/amzguard.access.log /var/log/nginx/amzguard.error.log; do
   test ! -L "$nginx_log" || { echo "Nginx 日志不得是符号链接: $nginx_log" >&2; exit 2; }
