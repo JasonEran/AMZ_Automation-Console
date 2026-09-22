@@ -7,6 +7,7 @@ export function adsDeliveryState(value) {
   if (/^(?:已归档|已存档|Archived)$/i.test(text)) return 'ARCHIVED';
   if (/^(?:已结束|Ended)$/i.test(text)) return 'ENDED';
   if (/^(?:不完整|Incomplete)$/i.test(text)) return 'INCOMPLETE';
+  if (/^(?:已安排|Scheduled)$/i.test(text)) return 'SCHEDULED';
   if (/^(?:预算耗尽|预算已用完|预算用尽|超出预算|Out of budget|Budget exhausted)$/i.test(text)) return 'OUT_OF_BUDGET';
   if (/^(?:未投放|未在投放|不符合投放条件|广告组合未投放|广告组合已暂停|Not delivering|Ineligible|Portfolio not delivering|Portfolio paused)$/i.test(text)) return 'NOT_DELIVERING';
   return 'UNKNOWN';
@@ -92,7 +93,7 @@ export function effectiveCampaignState(portfolio, campaign) {
   if (['ARCHIVED', 'ENDED'].includes(child) || ['ARCHIVED', 'ENDED'].includes(parent)) return 'EXCLUDED';
   if (parent === 'PAUSED') return 'OFF';
   if (child === 'PAUSED') return campaign.toggle === 'PAUSED' ? 'OFF' : 'UNKNOWN';
-  if (['OUT_OF_BUDGET', 'NOT_DELIVERING', 'INCOMPLETE'].includes(child)) {
+  if (['OUT_OF_BUDGET', 'NOT_DELIVERING', 'INCOMPLETE', 'SCHEDULED'].includes(child)) {
     return campaign.toggle === 'PAUSED' ? 'OFF' : campaign.toggle === 'ENABLED' ? 'LIMITED' : 'UNKNOWN';
   }
   if (child === 'DELIVERING') {
