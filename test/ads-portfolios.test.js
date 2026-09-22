@@ -267,6 +267,42 @@ test('an incomplete campaign is collected as a business limitation, never as del
   assert(!/[^\x00-\x7f]/.test(ADS_PORTFOLIO_EXTRACTOR), 'injected extractor remains ASCII');
 });
 
+test('a scheduled campaign is collected as enabled-but-not-delivering, never as a parser failure', () => {
+  for (const label of ['已安排', 'Scheduled']) {
+    assert.equal(adsDeliveryState(label), 'SCHEDULED');
+    const parsed = parsePortfolioPageText(detailText.replace('已暂停', label), 'detail');
+    assert.equal(parsed.complete, true);
+    assert.deepEqual(parsed.rows.map(r => r.delivery), ['SCHEDULED', 'DELIVERING'], 'the next row must not shift into the scheduled row');
+    const name = (i, id, text) => e('div', { 'data-e2e-index': `cellIndex_${i}_2`, 'data-udt-column-id': 'name-cell' }, {},
+      e('a', { id, 'data-e2e-id': 'entityNameRenderer' }, {}, text));
+    const row = (i, status) => [name(i, `C${i}`, i ? '活动乙' : '活动甲'),
+      e('div', { 'data-e2e-index': `cellIndex_${i}_1`, 'data-udt-column-id': 'state-cell' }, {}, e('button', { role: 'switch', 'aria-checked': 'true' })),
+      e('div', { 'data-e2e-index': `cellIndex_${i}_3`, 'data-udt-column-id': 'status-cell' }, {}, status+' 详细信息')];
+    const body = e('body', {}, {}, e('input', { id: 'UCM-CM-APP:SINGLE_PORTFOLIO:searchInput', value: '' }),
+      e('div', { id: 'SINGLE_PORTFOLIO', 'data-e2e-id': 'dataTableWrapper' }, {}, ...row(0, label), ...row(1, '正在投放'),
+        e('div', { 'data-e2e-id': 'tablePagination' }, {}, e('input', { id: 'UCM-CM-APP:SINGLE_PORTFOLIO:pagination-input', value: '1' }),
+          '1 - 2 / 2 结果 每页显示的结果数： 50')));
+    const dom = new Function('document', 'window', ADS_PORTFOLIO_EXTRACTOR)(body, { getComputedStyle: el => el.style });
+    assert.equal(dom.rows[0].statusText, label);
+    assert.equal(verifyPortfolioPage(dom, parsed), true);
+    const portfolio = { id: 'P1', name: '组合', statusText: '正在投放' };
+    assert.equal(effectiveCampaignState(portfolio, { statusText: label, toggle: 'ENABLED' }), 'LIMITED');
+    assert.equal(effectiveCampaignState(portfolio, { statusText: label, toggle: 'PAUSED' }), 'OFF');
+    assert.equal(effectiveCampaignState(portfolio, { statusText: label, toggle: null }), 'UNKNOWN');
+    const peer = { id: 'P1', name: '组合', delivery: 'DELIVERING', campaigns: parsed.rows.map((r, i) => ({ ...r, id: `C${i}` })) };
+    const v = judgePortfolioAdvertising({
+      dom: { complete: true, portfolios: [{ ...portfolio, campaigns: dom.rows }] },
+      txt: { complete: true, portfolios: [peer] },
+      config: { _currentSlot: 'ads-off' },
+    });
+    assert.equal(v.metrics.collectionStatus, 'COMPLETE');
+    assert.equal(v.metrics.limited, 1);
+    assert.equal(v.items.find(r => r.campaignId === 'C0').effective, 'LIMITED');
+  }
+  assert.equal(adsDeliveryState('已安排投放'), 'UNKNOWN');
+  assert(!/[^\x00-\x7f]/.test(ADS_PORTFOLIO_EXTRACTOR), 'injected extractor remains ASCII');
+});
+
 test('UCM extraction joins split table cells by row index, never by raw DOM order', () => {
   const name = (index, id, label) => e('div', { 'data-e2e-index': `cellIndex_${index}_2`, 'data-udt-column-id': 'name-cell' }, {},
     e('a', { id, 'data-e2e-id': 'entityNameRenderer' }, {}, label));
