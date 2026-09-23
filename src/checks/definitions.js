@@ -1119,6 +1119,12 @@ export const outletCheck = {
     '/inventoryplanning/manageinventoryhealth?sort_column=product_details&sort_direction=asc&sort_column_sub=msku&RECOMMENDATION=OUTLET_DEAL',
   ],
   settleMs: 1200,
+  // Some accounts replace Manage Inventory Health with /manage/fba-inventory and
+  // then rewrite the recommendation query (`recommendation` -> `~recommendation`).
+  // Wait until that redirect stops, and re-read if it still moves during the probe.
+  urlStabilizeMs: 15000,
+  urlStabilizePollMs: 400,
+  pageIdentityRetries: 2,
   readyTimeoutMs: 30000,
   readyPollMs: 2000,
   ready({ dom, txt }) {
@@ -1142,7 +1148,7 @@ export const outletCheck = {
       .map((match) => Number(match[1] ?? match[2])).filter(Number.isFinite);
     const positiveResultCount = resultCounts.filter((count) => count > 0).sort((a, b) => b - a)[0] ?? null;
     const zeroResults = positiveResultCount === null
-      && /0\s*results|did not return any results|0\s*条结果|未返回任何结果/i.test(t);
+      && /0\s*results|did not return any results|0\s*条结果|未返回任何结果|无结果/i.test(t);
     const hits = t.match(/create (?:an )?outlet deal|创建奥特莱斯限时促销/gi) || [];
     const filterHits = t.match(/(?:selected filters?|filter criteria|已选筛选条件)[^]{0,120}(?:create (?:an )?outlet deal|创建奥特莱斯限时促销)/gi) || [];
     const totalMatch = /(?:total(?:\s+results?)?\s*[:\-]?\s*)(\d+)|\b(\d+)\s+results?\b/i.exec(t)
