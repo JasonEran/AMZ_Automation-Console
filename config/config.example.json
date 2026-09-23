@@ -103,7 +103,7 @@
       "enabled": false,
       "webhook": "",
       "secret": "",
-      "_channels_note": "Webhook/Secret 仅允许环境变量或 macOS Keychain；operations 接收程序故障，regular 接收业务状态与运行正常。DINGTALK_BUSINESS_WEBHOOK 可选，只接收页面证据业务事项，不接收采集故障。",
+      "_channels_note": "Webhook/Secret 仅允许环境变量或 macOS Keychain；operations 接收程序故障，regular 接收业务状态与运行正常。DINGTALK_BUSINESS_WEBHOOK 可选，只接收广告和绩效的业务异常，不接收其他检查或采集故障。",
       "channels": [],
       "atMobiles": [],
       "atAll": false

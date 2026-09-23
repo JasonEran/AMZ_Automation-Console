@@ -220,8 +220,8 @@ function businessChannel(credentials) {
   return {
     name: 'business', enabled: true,
     webhook: credentials.webhook, secret: credentials.secret || '',
-    // Page-evidence business findings. Collection failures are severity ERROR
-    // and are rejected again by name inside the alerter.
+    // Ads and performance business findings only. Other checks and collection
+    // failures are rejected again by name inside the alerter.
     severities: ['CRITICAL', 'WARN'], atMobiles: [], atAll: false,
   };
 }

@@ -41,7 +41,7 @@ export function partitionAlertProblems(problems = []) {
   })).filter((group) => group.problems.length > 0);
 }
 
-function dingtalkMessage({ alert, lines, at, entry }) {
+function dingtalkMessage({ alert, lines, at, entry, keyword }) {
   const presentation = presentationOf(alert.severity);
   const details = lines.filter((line) => !entry || !String(line).includes(entry));
   const markdown = [
@@ -53,15 +53,16 @@ function dingtalkMessage({ alert, lines, at, entry }) {
     '',
     `**处置建议**：${presentation.action}`,
   ];
+  if (keyword) markdown.push('', `**值守主题**：${keyword}`);
   if (details.length) {
     markdown.push('', '#### 结果明细', '', ...details.map((line) => `- ${line}`));
   }
   markdown.push('', '---', '', `**发生时间**：${at}（北京时间）`);
   if (entry) markdown.push('', `**运营看板**：[打开巡检控制台](${entry})`);
-  return {
-    title: `【${presentation.conclusion}】${alert.title}`,
-    text: markdown.join('\n'),
-  };
+  const title = keyword
+    ? `【${presentation.conclusion}】${keyword} ${alert.title}`
+    : `【${presentation.conclusion}】${alert.title}`;
+  return { title, text: markdown.join('\n') };
 }
 
 function signDingtalk(webhook, secret) {
@@ -141,18 +142,29 @@ function alertStatuses(alert) {
 }
 
 /** Collection failures stay off the business robot even if a caller labels
- * them WARN. Page-evidence findings such as POOR_CX stay eligible. */
+ * them WARN. */
 export function isCollectionFailureAlert(alert) {
   if (alert?.severity === 'ERROR') return true;
   const statuses = alertStatuses(alert);
   return statuses.length > 0 && statuses.every((status) => COLLECTION_FAILURE_STATUSES.has(status));
 }
 
+const BUSINESS_ROBOT_CHECKS = new Set(['ads-status', 'performance']);
+
+export function businessRobotKeyword(check) {
+  if (check === 'ads-status') return '广告值守';
+  if (check === 'performance') return 'ASIN';
+  return '';
+}
+
 function channelMatches(channel, alert) {
   if (!channel?.enabled || !channel.webhook) return false;
   const levels = channel.severities || defaultDingTalkSeverities(channel);
   if (!levels.includes(alert?.severity)) return false;
-  if (channel.name === 'business' && isCollectionFailureAlert(alert)) return false;
+  if (channel.name === 'business') {
+    if (!BUSINESS_ROBOT_CHECKS.has(alert?.check)) return false;
+    if (isCollectionFailureAlert(alert)) return false;
+  }
   return true;
 }
 
@@ -215,7 +227,8 @@ export function createAlerter({ config, logger, outDir }) {
         logger.error(`钉钉通道 ${channel.name || 'default'} 不是官方机器人地址，已拒绝发送`);
         continue;
       }
-      const markdown = dingtalkMessage({ alert: safeAlert, lines, at: record.at, entry });
+      const keyword = channel.name === 'business' ? businessRobotKeyword(safeAlert.check) : '';
+      const markdown = dingtalkMessage({ alert: safeAlert, lines, at: record.at, entry, keyword });
       const response = await postJson(signDingtalk(channel.webhook, channel.secret), {
         msgtype: 'markdown', markdown,
         at: { atMobiles: channel.atMobiles || [], isAtAll: Boolean(channel.atAll) },

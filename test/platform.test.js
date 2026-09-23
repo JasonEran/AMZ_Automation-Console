@@ -594,7 +594,7 @@ test('alert routing is severity-specific and audits the sanitized dashboard URL 
   assert.equal(mode(path.dirname(alerter.fileSink)), 0o700);
 });
 
-test('business DingTalk robot receives page-evidence alerts and skips collection failures', async (t) => {
+test('business DingTalk robot receives only ads and performance anomalies', async (t) => {
   const requests = [];
   t.mock.method(globalThis, 'fetch', async (url, options) => {
     requests.push({ url: String(url), body: String(options?.body || '') });
@@ -619,57 +619,60 @@ test('business DingTalk robot receives page-evidence alerts and skips collection
     },
   });
 
+  const excluded = [
+    { check: 'voc', severity: 'CRITICAL', title: 'VOC 异常', status: 'POOR_CX' },
+    { check: 'reviews', severity: 'CRITICAL', title: '低星评价', status: 'LOW_REVIEW' },
+    { check: 'asin-health', severity: 'WARN', title: '评分下降', status: 'RATING_DROP' },
+    { check: 'outlet', severity: 'WARN', title: '奥特莱斯', status: 'NEW_DEAL' },
+    { check: 'feedback', severity: 'CRITICAL', title: '当天低分', status: 'TODAY_LOW_RATING' },
+    { check: 'inbox', severity: 'WARN', title: '买家消息', status: 'NEW_BUYER_MESSAGE' },
+  ];
+  for (const item of excluded) {
+    await alerter.send({
+      check: item.check, severity: item.severity, title: item.title,
+      lines: [`**US-01** → ${item.status}`],
+      data: { stores: [{ status: item.status }] },
+    });
+  }
   await alerter.send({
-    check: 'voc', severity: 'CRITICAL', title: '页面证据业务异常',
-    lines: ['**US-01** → POOR_CX', '**US-02** → SHOULD_BE_OFF', '**US-03** → LOW_REVIEW'],
-    data: { stores: [
-      { storeKey: 'US-01', status: 'POOR_CX' },
-      { storeKey: 'US-02', status: 'SHOULD_BE_OFF' },
-      { storeKey: 'US-03', status: 'LOW_REVIEW' },
-    ] },
+    check: 'ads-status', severity: 'CRITICAL', title: '广告开关检查异常',
+    lines: ['**US-02** → SHOULD_BE_OFF'],
+    data: { stores: [{ status: 'SHOULD_BE_OFF' }] },
   });
   await alerter.send({
-    check: 'asin-health', severity: 'WARN', title: '评分下降',
-    lines: ['**B0TESTASIN** (US) → RATING_DROP'],
-    data: { stores: [{ status: 'RATING_DROP' }] },
+    check: 'performance', severity: 'CRITICAL', title: '绩效未处理检查异常',
+    lines: ['**US-03** → ATTENTION_REQUIRED'],
+    data: { stores: [{ status: 'ATTENTION_REQUIRED' }] },
   });
   await alerter.send({
-    check: 'store-health', severity: 'ERROR', title: '采集失败',
-    lines: ['**US-04** → LOGIN_REQUIRED', '**US-05** → PARTIAL_EVIDENCE'],
-    data: { stores: [
-      { storeKey: 'US-04', status: 'LOGIN_REQUIRED' },
-      { storeKey: 'US-05', status: 'PARTIAL_EVIDENCE' },
-    ] },
-  });
-  await alerter.send({
-    check: 'ads-status', severity: 'ERROR', title: '证据不足',
-    lines: ['**US-06** → PARTIAL_EVIDENCE'],
+    check: 'ads-status', severity: 'ERROR', title: '广告采集失败',
+    lines: ['**US-04** → PARTIAL_EVIDENCE'],
     data: { stores: [{ status: 'PARTIAL_EVIDENCE' }] },
   });
   await alerter.send({
-    check: 'reviews', severity: 'WARN', title: '配置缺失',
-    lines: ['**US-07** → NOT_CONFIGURED'],
-    data: { stores: [{ status: 'NOT_CONFIGURED' }] },
+    check: 'performance', severity: 'ERROR', title: '绩效采集失败',
+    lines: ['**US-05** → LOGIN_REQUIRED'],
+    data: { stores: [{ status: 'LOGIN_REQUIRED' }] },
   });
 
   const business = requests.filter((entry) => /access_token=BUSINESS_FIXTURE/.test(entry.url));
   const regular = requests.filter((entry) => /access_token=REGULAR_FIXTURE/.test(entry.url));
   const operations = requests.filter((entry) => /access_token=OPS_FIXTURE/.test(entry.url));
-  const businessText = business.map((entry) => entry.body).join('\n');
   assert.equal(business.length, 2);
-  assert.match(businessText, /POOR_CX/);
-  assert.match(businessText, /SHOULD_BE_OFF/);
-  assert.match(businessText, /LOW_REVIEW/);
-  assert.match(businessText, /RATING_DROP/);
-  assert.match(businessText, /亚马逊店铺巡检通知/);
-  assert.doesNotMatch(businessText, /LOGIN_REQUIRED|PARTIAL_EVIDENCE|NOT_CONFIGURED/);
-  assert.equal(regular.length, 1);
-  assert.match(regular[0].body, /POOR_CX/);
-  assert.doesNotMatch(regular.map((entry) => entry.body).join('\n'), /LOGIN_REQUIRED|RATING_DROP/);
-  assert.equal(operations.length, 4);
-  assert.match(operations.map((entry) => entry.body).join('\n'), /LOGIN_REQUIRED/);
-  assert.match(operations.map((entry) => entry.body).join('\n'), /PARTIAL_EVIDENCE/);
-  assert.match(operations.map((entry) => entry.body).join('\n'), /RATING_DROP/);
+  const adsBody = business.find((entry) => entry.body.includes('SHOULD_BE_OFF')).body;
+  const performanceBody = business.find((entry) => entry.body.includes('ATTENTION_REQUIRED')).body;
+  assert.match(adsBody, /广告值守/);
+  assert.equal(adsBody.includes('ASIN'), false);
+  assert.match(performanceBody, /ASIN/);
+  assert.equal(performanceBody.includes('广告值守'), false);
+  assert.match(adsBody, /亚马逊店铺巡检通知/);
+  const businessText = business.map((entry) => entry.body).join('\n');
+  assert.doesNotMatch(businessText, /POOR_CX|LOW_REVIEW|RATING_DROP|NEW_DEAL|TODAY_LOW_RATING|NEW_BUYER_MESSAGE|PARTIAL_EVIDENCE|LOGIN_REQUIRED/);
+  assert.equal(regular.filter((entry) => entry.body.includes('SHOULD_BE_OFF')).length, 1);
+  assert.doesNotMatch(regular.find((entry) => entry.body.includes('SHOULD_BE_OFF')).body, /广告值守/);
+  assert.ok(operations.some((entry) => entry.body.includes('PARTIAL_EVIDENCE')));
+  assert.ok(operations.some((entry) => entry.body.includes('LOGIN_REQUIRED')));
+  assert.ok(operations.some((entry) => entry.body.includes('RATING_DROP')));
   assert.equal(requests.some((entry) => /oapi\.dingtalk\.com/.test(entry.url) && !/FIXTURE/.test(entry.url)), false);
 });
 
