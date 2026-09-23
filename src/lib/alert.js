@@ -119,15 +119,48 @@ export function isOfficialDingTalkWebhook(value) {
   }
 }
 
-function channelsOf(config, severity) {
+const COLLECTION_FAILURE_STATUSES = new Set([
+  'ERROR', 'PARTIAL_EVIDENCE', 'LOGIN_REQUIRED', 'BLOCKED', 'UNKNOWN',
+  'NOT_CONFIGURED', 'DETAIL_ERROR', 'REVIEW_OWNERSHIP_UNKNOWN', 'UNKNOWN_RATING',
+]);
+
+export function defaultDingTalkSeverities(channel) {
+  if (channel?.name === 'operations') return ['ERROR', 'WARN'];
+  if (channel?.name === 'business') return ['CRITICAL', 'WARN'];
+  return ['OK', 'CRITICAL'];
+}
+
+function alertStatuses(alert) {
+  const stored = Array.isArray(alert?.data?.stores) ? alert.data.stores : [];
+  const fromData = stored.map((item) => String(item?.status || '')).filter(Boolean);
+  if (fromData.length) return fromData;
+  return (alert?.lines || []).flatMap((line) => {
+    const match = /→\s*([A-Z][A-Z0-9_]*)/.exec(String(line));
+    return match ? [match[1]] : [];
+  });
+}
+
+/** Collection failures stay off the business robot even if a caller labels
+ * them WARN. Page-evidence findings such as POOR_CX stay eligible. */
+export function isCollectionFailureAlert(alert) {
+  if (alert?.severity === 'ERROR') return true;
+  const statuses = alertStatuses(alert);
+  return statuses.length > 0 && statuses.every((status) => COLLECTION_FAILURE_STATUSES.has(status));
+}
+
+function channelMatches(channel, alert) {
+  if (!channel?.enabled || !channel.webhook) return false;
+  const levels = channel.severities || defaultDingTalkSeverities(channel);
+  if (!levels.includes(alert?.severity)) return false;
+  if (channel.name === 'business' && isCollectionFailureAlert(alert)) return false;
+  return true;
+}
+
+function channelsOf(config, alert) {
   const legacy = config.alert?.dingtalk || {};
   const configured = Array.isArray(legacy.channels) ? legacy.channels : [];
   if (!configured.length) return legacy.enabled && legacy.webhook ? [{ name: 'default', ...legacy }] : [];
-  return configured.filter((channel) => {
-    if (!channel?.enabled || !channel.webhook) return false;
-    const levels = channel.severities || (channel.name === 'operations' ? ['ERROR', 'WARN'] : ['OK', 'CRITICAL']);
-    return levels.includes(severity);
-  });
+  return configured.filter((channel) => channelMatches(channel, alert));
 }
 
 export function hasConfiguredDingTalk(config) {
@@ -173,7 +206,7 @@ export function createAlerter({ config, logger, outDir }) {
       for (const line of lines) fn(`    ${line}`);
     }
 
-    for (const channel of channelsOf(config, safeAlert.severity)) {
+    for (const channel of channelsOf(config, safeAlert)) {
       const key = `dingtalk:${channel.name || 'default'}`;
       if (!isOfficialDingTalkWebhook(channel.webhook)) {
         record.delivery[key] = {
