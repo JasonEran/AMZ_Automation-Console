@@ -29,7 +29,7 @@ test('a missing or invalid ads cap falls back to the global cap', () => {
   }), 1);
 });
 
-test('the measured visit pause is 200 ms and the other waits stay', () => {
+test('fixed pauses in front of the evidence poll are 200 ms', () => {
   const src = fs.readFileSync(new URL('../src/lib/ads-portfolio-collector.js', import.meta.url), 'utf8');
   const visitStart = src.indexOf('const visit = async');
   const visitEnd = src.indexOf('await visit(LIST_URL)');
@@ -37,7 +37,15 @@ test('the measured visit pause is 200 ms and the other waits stay', () => {
   const visit = src.slice(visitStart, visitEnd);
   assert.match(visit, /await sleep\(200\);/);
   assert.doesNotMatch(visit, /await sleep\(2000\)/);
-  assert.match(src, /await sleep\(2000\);/);
+  const filterStart = src.indexOf('search: expectedSearch');
+  assert.ok(filterStart > 0);
+  const filter = src.slice(filterStart, filterStart + 280);
+  assert.match(filter, /await sleep\(200\);/);
+  assert.doesNotMatch(filter, /await sleep\(2000\)/);
+  assert.match(src, /await sleep\(600\);/);
+  assert.match(src, /await sleep\(1500\);/);
+  assert.match(src, /await sleep\(500\);/);
+  assert.doesNotMatch(src, /await sleep\(2000\)/);
   assert.match(src, /timeoutMs = 45000/);
   assert.match(src, /verifyPortfolioPage/);
 });

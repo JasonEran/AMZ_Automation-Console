@@ -101,7 +101,8 @@ async function readWindow({ zn, storeId, kind, portfolioId, expectedStart, expec
         // Apply the portfolio name scope on the list; clear every child table
         // search so campaigns without the portfolio's name suffix are included.
         await moveView({ zn, storeId, kind, portfolioId, search: expectedSearch });
-        await sleep(2000);
+        // Idle after Enter. The loop still requires DOM and page text to agree.
+        await sleep(200);
         searchReset = true;
         deadline = Date.now() + timeoutMs;
         continue;
@@ -208,8 +209,7 @@ export async function probePortfolioAdvertising({ zn, store, config, logger }) {
     storeId = opened.storeId;
     const visit = async (url) => {
       await zn.visit(storeId, url, { timeoutMs: 120000 });
-      // Measured 2026-09-24: 200 ms here, with readWindow still requiring DOM
-      // and page text to agree. The list-filter sleep(2000) stays.
+      // 200 ms, then readWindow still requires DOM and page text to agree.
       await sleep(200);
       await zn.selectAdvertisingAccount?.(storeId, { timeoutMs: 45000 });
     };
