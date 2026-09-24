@@ -208,7 +208,9 @@ export async function probePortfolioAdvertising({ zn, store, config, logger }) {
     storeId = opened.storeId;
     const visit = async (url) => {
       await zn.visit(storeId, url, { timeoutMs: 120000 });
-      await sleep(2000);
+      // Measured 2026-09-24: 200 ms here, with readWindow still requiring DOM
+      // and page text to agree. The list-filter sleep(2000) stays.
+      await sleep(200);
       await zn.selectAdvertisingAccount?.(storeId, { timeoutMs: 45000 });
     };
     await visit(LIST_URL);
