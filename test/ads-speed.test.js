@@ -42,7 +42,13 @@ test('fixed pauses in front of the evidence poll are 200 ms', () => {
   const filter = src.slice(filterStart, filterStart + 280);
   assert.match(filter, /await sleep\(200\);/);
   assert.doesNotMatch(filter, /await sleep\(2000\)/);
-  assert.match(src, /await sleep\(600\);/);
+  const moveStart = src.indexOf('async function moveView');
+  const moveEnd = src.indexOf('async function readWindow');
+  assert.ok(moveStart > 0 && moveEnd > moveStart);
+  const move = src.slice(moveStart, moveEnd);
+  assert.match(move, /await sleep\(200\);/);
+  assert.doesNotMatch(move, /await sleep\(600\)/);
+  assert.doesNotMatch(src, /await sleep\(600\)/);
   assert.match(src, /await sleep\(1500\);/);
   assert.match(src, /await sleep\(500\);/);
   assert.doesNotMatch(src, /await sleep\(2000\)/);

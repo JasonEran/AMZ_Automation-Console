@@ -80,7 +80,8 @@ async function moveView({ zn, storeId, kind, portfolioId, page = null, top = nul
   }
   const after = await gate(zn, storeId, kind, portfolioId);
   if (rawPageIdentity(after) !== rawPageIdentity(before)) throw new Error('广告组合视图调整期间地址发生变化');
-  await sleep(600);
+  // Idle after the view change. The next readWindow still requires DOM and page text to agree.
+  await sleep(200);
   return scroll;
 }
 
