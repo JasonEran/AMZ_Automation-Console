@@ -641,8 +641,13 @@ function outletContext(el) {
     if (FILTER_META_RE.test(meta) || (nt.length > 0 && nt.length <= 400 && SELECTED_FILTER_TEXT_RE.test(nt))) {
       filterLike = true; break;
     }
+    var role = "";
+    try { role = norm(node.getAttribute("role")); } catch (eRole) {}
+    // 2026-09-29 FENG inventory: the "1~1, total" counter is in the table
+    // footer, a sibling of the table inside the captured region wrapper.
     if (/^(?:table|thead|tbody|tfoot)$/.test(tag) || /^(?:table|grid|rowgroup)$/i.test(meta)
-        || RESULT_META_RE.test(meta)) {
+        || RESULT_META_RE.test(meta)
+        || (role === "region" && /(?:^|[-_ ])wrapper(?:$|[-_ ])/.test(meta) && /(?:^|[-_ ])has-footer(?:$|[-_ ])/.test(meta))) {
       resultLike = true; break;
     }
     if (tag === "main" || tag === "body" || nt.length > 800) break;

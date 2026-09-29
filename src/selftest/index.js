@@ -1987,8 +1987,11 @@ export async function selfTest({ logger }) {
       e('main', {}, {},
         e('h1', {}, {}, '管理亚马逊库存'),
         tokenPhrase,
-        e('div', { class: 'results-table' }, {},
-          e('table', { role: 'treegrid' }, {}, deepRow),
+        e('div', {
+          class: 'awsui_wrapper_wih1l_1qsa9_73 awsui_variant-full-page_wih1l_1qsa9_174 awsui_has-footer_wih1l_1qsa9_83 awsui_has-header_wih1l_1qsa9_86',
+          role: 'region',
+        }, {},
+          e('table', { class: 'awsui_table_wih1l_1qsa9_63', role: 'treegrid' }, {}, deepRow),
           e('span', {}, {}, '1~1，共 1')),
       ),
     ));
