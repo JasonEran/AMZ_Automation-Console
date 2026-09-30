@@ -16,10 +16,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-pack_roots=(src scripts deploy docs test)
+pack_roots=(src scripts deploy docs test .github)
 pack_config_files=(config/config.example.json config/stores.example.json config/asins.example.json)
 pack_inputs=("${pack_roots[@]}" "${pack_config_files[@]}")
-pack_root_files=(package.json package-lock.json README.md DEPLOY.md AGENTS.md .gitignore)
+pack_root_files=(package.json package-lock.json README.md DEPLOY.md AGENTS.md CONTRIBUTING.md SECURITY.md CHANGELOG.md .gitignore)
 
 # `zip` may follow a symlink and archive bytes outside the repository. Release
 # inputs therefore reject every symlink instead of trying to infer whether its

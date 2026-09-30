@@ -2,6 +2,7 @@
 /out/
 /dist/
 /DEPLOYED_MANIFEST.sha256
+/DEPLOYED_RELEASE.json
 
 # local secrets / real store list
 /config/config.json

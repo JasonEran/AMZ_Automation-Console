@@ -15,9 +15,9 @@
 
 本期提供两类数据：**`results` 是检查结论，`data` 是某次检查保存的明细**。读取不会触发 Amazon 采集，也不会向 CRM 写入业务数据；不包含竞品情报、补跑、上传或店铺管理接口。
 
-先完成第 1～4 节的后端取数，再按第 5 节接“查看监测详情”按钮。完整字段、类型和错误码查阅 [OpenAPI 规范](crm-openapi.json)；也可带 Token 请求 `GET /api/crm/v1/openapi.json` 获取线上版本。
+先完成第 1～4 节的后端取数，再按第 5 节接“查看监测详情”按钮。完整字段、类型和错误码查阅 [OpenAPI 规范](../crm-openapi.json)；也可带 Token 请求 `GET /api/crm/v1/openapi.json` 获取线上版本。
 
-## 1. 先接通一个店铺
+## 1. 店铺接入
 
 ### Token 与店铺映射
 
@@ -34,7 +34,7 @@ CRM 内部店铺 ID 与监测站的 `storeKey` 是两套标识，需建立明确
 
 接口只返回当前 Token 获准访问且已启用的店铺。新增店铺需另行授权；停用后不可读取；改展示名称不改变 `storeKey`。
 
-### 第一个请求
+### 请求示例
 
 将单独交付的 Token 配入 CRM 后端环境变量 `AMZGUARD_CRM_API_TOKEN` 后，可在该服务器验证：
 
@@ -47,7 +47,7 @@ curl -sS -i --max-time 15 \
 
 PHP / Laravel 使用同样的 HTTPS 请求头即可。**按 HTTP 状态判断成功，不按 CRM 原有的 `code === 0` 判断。** 本接口没有开放 CORS，由 CRM 后端取数，再通过 CRM 自己的接口提供给前端。
 
-### 响应怎么读
+### 响应结构
 
 成功 JSON 都有 `apiVersion`、`requestId`、`generatedAt`、`data`；错误格式见第 4 节。OpenAPI 文件、HTML 和重定向不使用这个 JSON 包装。
 
@@ -103,7 +103,7 @@ GET /api/crm/v1/stores/{storeKey}/results
 
 “完整”指指定批次中允许对外提供的全部有效保存记录，不代表 Amazon 当前的全部数据。接口不会补采缺失详情，也不提供原始 JSON 或截图下载。
 
-### 先选批次，再逐页读取
+### 批次选择与分页
 
 ```http
 GET /api/crm/v1/stores/{storeKey}/checks/{checkId}/runs?from=2026-09-01&to=2026-09-12&page=1&pageSize=100
@@ -265,7 +265,7 @@ API Token 不进入窗口消息；CRM 用户 Token 留在 CRM 原有请求链路
 
 监测页自行调用 `/crm/session`、`/crm/sso/exchange`、`/crm/logout`；兑换和退出使用同源 JSON POST，退出正文为 `{}`。面板复用现有界面，显示巡检总览、店铺风险、客户声音、商品状态、广告值守和系统保障，可查看已保存明细、历史及关联截图。不能管理店铺/用户、修改广告规则、上传、补跑或查看竞品情报。页面通过独立的 `/crm/dashboard/` 只读路径加载数据，不取得 Dashboard 账户角色。此内部路径由页面自行调用，CRM 后端取数仍使用第 1～4 节的 API。面板请求按 IP 每分钟最多 180 次；刷新仅读取已保存数据。面板会话不能用来调用机器数据 API；API Token 的店铺白名单仍保持原范围。旧单店会话的数据 API 同时收到 Authorization 和 Cookie 时，以 Authorization 为准，错误 Bearer 不回退到 Cookie；`/crm`、`/crm/`、`/crm/session` 只认独立 CRM Cookie。此握手是本项目协议，不是 OAuth/OIDC。
 
-### 以后需要 HTTPS 重定向时
+### HTTPS 重定向模式
 
 仅在 CRM 已有可识别当前用户的 HTTPS 回调时使用：监测站配置固定回调，CRM 链接进入 `/crm/sso/start`，监测站通过 303 带回 `challengeId/view=dashboard`。CRM 回调鉴权后调用同一个签票接口，再将浏览器 303 跳到 `data.loginUrl`；监测完成页先清除 fragment，再同源兑换。
 
