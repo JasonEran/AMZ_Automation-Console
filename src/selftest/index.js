@@ -1808,6 +1808,55 @@ export async function selfTest({ logger }) {
     eq(uncertain.metrics.newCount, 0, 'filter without reliable zero newCount');
     eq(uncertain.baselineEligible, false, 'filter without reliable zero baseline');
 
+    eq(outletCheck.urlStabilizeMs >= 8000, true, 'outlet waits out the fba-inventory redirect');
+    eq(outletCheck.pageIdentityRetries, 2, 'outlet re-reads a recommendation query rewrite');
+    const tokenEnv = F.envFor(e('body', {}, {},
+      e('main', {}, {},
+        e('h1', {}, {}, '管理亚马逊库存'),
+        e('span', { class: 'awsui_token_dm8gx_c5bmf_10 awsui_token-inline_1i2wg_9bqun_118' }, {},
+          e('span', {}, {}, '创建奥特莱斯限时促销')),
+        e('table', {}, {},
+          e('tbody', {}, {},
+            e('tr', {}, {},
+              e('td', {}, {},
+                e('div', { class: 'awsui_empty_wih1l_1qsa9_131' }, {},
+                  e('span', {}, {}, '无结果')))))),
+      ),
+    ));
+    const tokenDom = new Function('window', 'document', 'location', 'NodeFilter', outletCheck.extractor)(
+      tokenEnv.window, tokenEnv.document, tokenEnv.location, NodeFilter,
+    );
+    const tokenTxt = outletCheck.parseText('管理亚马逊库存 创建奥特莱斯限时促销 无结果');
+    eq(tokenDom.ignoredFilterControlCount, 1, 'cloudscape token is a filter');
+    eq(tokenDom.ambiguousActionCount, 0, 'token is not an ambiguous deal');
+    eq(tokenDom.createDealCount, 0, 'token page has no deal row');
+    eq(tokenDom.zeroResultNodeCount > 0, true, '无结果 is a result-table zero');
+    ok(tokenDom.zeroResultsReliable && tokenDom.pageComplete, 'new inventory empty state is complete');
+    eq(tokenTxt.zeroResults, true, 'text 无结果');
+    eq(tokenTxt.pageComplete, true, 'text page complete');
+    const tokenVerdict = outletCheck.judge({ dom: tokenDom, txt: tokenTxt, prev: null });
+    eq(tokenVerdict.status, 'NO_CHANGE', 'redirected empty outlet is no change');
+    eq(tokenVerdict.metrics.confirmedZero, true, 'redirected empty outlet confirmed zero');
+    eq(outletCheck.ready({ dom: tokenDom, txt: tokenTxt }), true, 'redirected empty outlet ready');
+    const mixedEnv = F.envFor(e('body', {}, {},
+      e('main', {}, {},
+        e('h1', {}, {}, '管理亚马逊库存'),
+        e('span', {}, {}, '无结果'),
+        e('table', { class: 'inventory-table' }, {},
+          e('tr', {}, {},
+            e('td', {}, {}, 'B012345678'),
+            e('td', {}, {}, e('button', {}, {}, 'Create outlet deal')))),
+      ),
+    ));
+    const mixedDom = new Function('window', 'document', 'location', 'NodeFilter', outletCheck.extractor)(
+      mixedEnv.window, mixedEnv.document, mixedEnv.location, NodeFilter,
+    );
+    const mixedTxt = outletCheck.parseText('管理亚马逊库存 无结果 B012345678 Create outlet deal');
+    const mixedVerdict = outletCheck.judge({ dom: mixedDom, txt: mixedTxt, prev: null });
+    eq(mixedDom.createDealCount, 1, 'a real deal row still counts beside 无结果');
+    eq(mixedVerdict.metrics.confirmedZero, false, '无结果 cannot hide a deal row');
+    eq(mixedVerdict.status === 'NO_CHANGE', false, 'mixed outlet page is not a clear zero');
+
     const unrelatedTotalTxt = outletCheck.parseText(
       `${filterText} 创建奥特莱斯限时促销 ${emptyText} 总计：1`,
     );
