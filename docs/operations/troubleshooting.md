@@ -69,9 +69,9 @@ journalctl -u amzguard-store-health-am.service --since today --no-pager -o short
 
 先区分“评价发表日期”和“截图采集时间”：今天采集到较早发表的评价是允许的，不能把发表日期改成今天。查看本店最新发表日期、评价所在页、分页覆盖和采集完成时间，再核对逐页证据。
 
-分页上限、逐页截图条件和历史报告限制见 [README 的 Reviews 说明](../README.md#九项检查)。翻新界面不会补出从未保存的图片；只有品牌最新评价但不属于本店时，不应替代本店最新评价。
+分页上限、逐页截图条件和历史报告限制见 [README 的 Reviews 说明](../reference/checks.md#九项检查)。翻新界面不会补出从未保存的图片；只有品牌最新评价但不属于本店时，不应替代本店最新评价。
 
-若出现 `REVIEWS_EVIDENCE_PAGE_CHANGED` 或对应页图片缺失，检查采集日志和双路证据，按 [手动补跑](OPERATIONS.md#手动补跑) 对目标店铺只读复采。不要删历史、复制其他页截图或改日期来消除差异。
+若出现 `REVIEWS_EVIDENCE_PAGE_CHANGED` 或对应页图片缺失，检查采集日志和双路证据，按 [手动补跑](operations.md#手动补跑) 对目标店铺只读复采。不要删历史、复制其他页截图或改日期来消除差异。
 
 ### 进入竞品情报后整页重载或侧栏缺少入口
 
@@ -97,7 +97,7 @@ systemctl show amzguard-collector-health.service -p Result -p ExecMainStatus
 
 允许的自动登录动作限定在对应店铺的已批准认证页：选择唯一已有账户、继续、点击紫鸟 Passkey；MFA 恰有三个可见可用方式时选择已批准的第一项并发送一次性密码，接受紫鸟验证码、等待填入并登录；账户切换页按目标市场选择已有账户。登录失败仍须保留失败状态。原生 Passkey/市场点击当前仅在 Linux 的 `xdotool` 路径实现。不得读取字段值，不得在日志/报告/截图中保存密码或验证码。认证页默认不落原文和截图；不要为了排障临时打开此取证。
 
-若需要重启紫鸟，先按 [部署第 4 节](../DEPLOY.md#4-停止排程并备份) 暂停所有相关 timer/path，并确认巡检、手动、情报、上传和维护任务均已结束：
+若需要重启紫鸟，先按 [部署第 4 节](deployment.md#4-停止排程并备份) 暂停所有相关 timer/path，并确认巡检、手动、情报、上传和维护任务均已结束：
 
 ```bash
 systemctl list-units --type=service 'amzguard-*'
@@ -153,7 +153,7 @@ done
 stat -c '%U:%G %a %n' /opt/amzguard/config/*.json
 ```
 
-不要运行 `env`、`systemctl show-environment` 或带值的 `grep`。六个最小权限 EnvironmentFile 应为 `root:root 0600`；`product-upload.env` 只能包含双闸、上传管理员和扫描策略，不得放 Dashboard/紫鸟/通道凭据。`config/` 应为 `root:ubuntu 0750`，三个运行配置必须为 `ubuntu:ubuntu 0600` 且无凭据。Dashboard 生产模式必须有至少一个可用用户、至少 32 字符的 Session Secret 和独立 ingest token，否则应拒绝启动；初始化与用户库要求见 [安全说明](SECURITY.md#凭据存放)。
+不要运行 `env`、`systemctl show-environment` 或带值的 `grep`。六个最小权限 EnvironmentFile 应为 `root:root 0600`；`product-upload.env` 只能包含双闸、上传管理员和扫描策略，不得放 Dashboard/紫鸟/通道凭据。`config/` 应为 `root:ubuntu 0750`，三个运行配置必须为 `ubuntu:ubuntu 0600` 且无凭据。Dashboard 生产模式必须有至少一个可用用户、至少 32 字符的 Session Secret 和独立 ingest token，否则应拒绝启动；初始化与用户库要求见 [安全说明](security.md#凭据存放)。
 
 macOS 旧配置迁移：
 
@@ -191,9 +191,9 @@ find /var/lib/clamav -maxdepth 1 -type f \( -name '*.cvd' -o -name '*.cld' \) -p
 - 已确认活跃商品无购物车/Buy Box，或真实评分下降。双路确认的 404 / Currently unavailable 按第 4 节归为非在售，不等同于活跃商品异常。
 - 新的 Outlet Deal 活动。
 - VOC 为 Poor/Very Poor、退货趋势异常。
-- 广告范围内未满足对应时段的多数有效状态规则；少数例外不能单独等同于整店异常，口径见 [广告说明](../README.md#广告范围与判定)。
+- 广告范围内未满足对应时段的多数有效状态规则；少数例外不能单独等同于整店异常，口径见 [广告说明](../reference/checks.md#广告范围与判定)。
 
-运营只能在人工批准的正常业务流程中处理；九项巡检不会修改 Listing、库存、价格、广告、店铺设置或 Amazon 退货记录；商品批量上传仅按 [部署中的独立授权流程](../DEPLOY.md#6-配置最小权限-environmentfile) 执行。处理后安排同店同项补跑，保留前后报告和时间线。
+运营只能在人工批准的正常业务流程中处理；九项巡检不会修改 Listing、库存、价格、广告、店铺设置或 Amazon 退货记录；商品批量上传仅按 [部署中的独立授权流程](deployment.md#6-配置最小权限-environmentfile) 执行。处理后安排同店同项补跑，保留前后报告和时间线。
 
 ## 7. 钉钉或 CRM 故障
 
@@ -252,4 +252,4 @@ stat /opt/amzguard/out/runtime/run.lock
 
 ## 10. 敏感信息疑似泄露
 
-立即停止把相关输出传播到聊天或工单，不继续打开文件全文。暂停 timer、保护现场、轮换相关凭据、运行历史脱敏 dry-run，并按 [SECURITY.md](SECURITY.md) 的事件流程执行。不要为了“清干净”而破坏报告时间顺序、CRM 账本或审计链。
+立即停止把相关输出传播到聊天或工单，不继续打开文件全文。暂停 timer、保护现场、轮换相关凭据、运行历史脱敏 dry-run，并按 [安全基线](security.md) 的事件流程执行。不要为了“清干净”而破坏报告时间顺序、CRM 账本或审计链。

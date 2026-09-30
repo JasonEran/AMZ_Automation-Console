@@ -12,12 +12,17 @@ else
   exit 2
 fi
 
+manifest_paths=$(mktemp "${TMPDIR:-/tmp}/amzguard-manifest.XXXXXX")
+trap 'rm -f "$manifest_paths"' EXIT HUP INT TERM
+
 (
   cd "$app_dir"
-  find src scripts deploy docs test -type f ! -name '._*' -print
+  find src scripts deploy docs test .github -type f ! -name '._*' ! -name '.DS_Store' -print
   find config -maxdepth 1 -type f -name '*.example.json' ! -name '._*' -print
-  find . -maxdepth 1 -type f \( -name 'package.json' -o -name 'package-lock.json' -o -name 'README.md' -o -name 'DEPLOY.md' -o -name 'AGENTS.md' \) -print
-) | LC_ALL=C sort | while IFS= read -r artifact; do
+  find . -maxdepth 1 -type f \( -name 'package.json' -o -name 'package-lock.json' -o -name 'README.md' -o -name 'DEPLOY.md' -o -name 'AGENTS.md' -o -name 'CONTRIBUTING.md' -o -name 'SECURITY.md' -o -name 'CHANGELOG.md' -o -name '.gitignore' \) -print
+) > "$manifest_paths"
+LC_ALL=C sort -o "$manifest_paths" "$manifest_paths"
+while IFS= read -r artifact; do
   artifact=${artifact#./}
   (cd "$app_dir" && digest "$artifact")
-done
+done < "$manifest_paths"

@@ -4,7 +4,7 @@
   "info": {
     "title": "AMZ 店铺监测 CRM 只读 API",
     "version": "1.0",
-    "description": "向 CRM 提供九项店铺监测的结果摘要和已保存明细，不包含竞品情报。CRM 后端使用 Bearer Token 通过 HTTPS 取数；浏览器免密入口另用绑定浏览器的票据和会话。HTTP CRM 页面可使用 popup 模式。接入步骤见随附的 CRM_API.md。\n\n所有接口均要求 HTTPS，且 Host 必须与服务端配置完全一致；不开放 CORS。鉴权使用不透明 Bearer Token 和浏览器票据，不采用 OAuth。读 API 优先检查 Authorization 请求头：只要携带此头，就不会在鉴权失败后改用 Cookie。\n\n接口只读取已保存数据，不启动 Amazon 采样，也不写入 Amazon 或 CRM 业务数据。返回字段经过白名单筛选和规则脱敏；文本脱敏不代表能识别任意自由文本中的全部个人信息。\n\n成功 JSON 使用统一响应结构，错误使用 application/problem+json；HTML 页面、重定向和原始 OpenAPI 文件以各接口定义为准。未知或重复的查询参数会被拒绝；参数名包含 token、ticket、password、secret 或 authorization 也会被拒绝，不得在查询串中传递凭据。\n\n本文件描述代码实现的接口约定，不单独证明该版本已部署；当前服务能力请查询 GET /api/crm/v1。"
+    "description": "向 CRM 提供九项店铺监测的结果摘要和已保存明细，不包含竞品情报。CRM 后端使用 Bearer Token 通过 HTTPS 取数；浏览器免密入口另用绑定浏览器的票据和会话。HTTP CRM 页面可使用 popup 模式。接入步骤见随附的 integrations/crm-api.md。\n\n所有接口均要求 HTTPS，且 Host 必须与服务端配置完全一致；不开放 CORS。鉴权使用不透明 Bearer Token 和浏览器票据，不采用 OAuth。读 API 优先检查 Authorization 请求头：只要携带此头，就不会在鉴权失败后改用 Cookie。\n\n接口只读取已保存数据，不启动 Amazon 采样，也不写入 Amazon 或 CRM 业务数据。返回字段经过白名单筛选和规则脱敏；文本脱敏不代表能识别任意自由文本中的全部个人信息。\n\n成功 JSON 使用统一响应结构，错误使用 application/problem+json；HTML 页面、重定向和原始 OpenAPI 文件以各接口定义为准。未知或重复的查询参数会被拒绝；参数名包含 token、ticket、password、secret 或 authorization 也会被拒绝，不得在查询串中传递凭据。\n\n本文件描述代码实现的接口约定，不单独证明该版本已部署；当前服务能力请查询 GET /api/crm/v1。"
   },
   "servers": [
     {
@@ -19,7 +19,7 @@
     },
     {
       "name": "Browser SSO",
-      "description": "浏览器免密登录、票据兑换和只读门户；支持 redirect 与 popup，具体流程见 CRM_API.md。"
+      "description": "浏览器免密登录、票据兑换和只读门户；支持 redirect 与 popup，具体流程见 integrations/crm-api.md。"
     }
   ],
   "paths": {
@@ -620,7 +620,7 @@
       "get": {
         "operationId": "beginCrmPopupSso",
         "summary": "打开免密登录 popup",
-        "description": "适用于通过弹窗接入的 CRM 页面，包括 HTTP CRM；监测服务始终使用 HTTPS。CRM 页面须先注册消息监听，再在按钮点击处理中同步打开弹窗，挑战消息只发送一次。\n\n接口创建有效期为 120 秒的挑战和 Secure、HttpOnly 绑定 Cookie，返回 HTML 页面，通过 postMessage 与唯一配置的 CRM origin 通信。两端都须校验精确 origin、窗口来源、requestId 和 challengeId。CRM 后端签票前须独立确认当前用户身份及面板访问权限（旧单店方式检查该店权限）；postMessage 不传 CRM 登录 Token 或监测 API Token。\n\n须配置 AMZGUARD_CRM_BRIDGE_ORIGIN，无需配置重定向回调。与 /crm/sso/start 共用每分钟 10 次的启动限额。消息协议和接入顺序见 CRM_API.md。\n省略 storeKey/view/checkId 默认进入全部已启用店铺的只读巡检面板；旧单店参数继续兼容。",
+        "description": "适用于通过弹窗接入的 CRM 页面，包括 HTTP CRM；监测服务始终使用 HTTPS。CRM 页面须先注册消息监听，再在按钮点击处理中同步打开弹窗，挑战消息只发送一次。\n\n接口创建有效期为 120 秒的挑战和 Secure、HttpOnly 绑定 Cookie，返回 HTML 页面，通过 postMessage 与唯一配置的 CRM origin 通信。两端都须校验精确 origin、窗口来源、requestId 和 challengeId。CRM 后端签票前须独立确认当前用户身份及面板访问权限（旧单店方式检查该店权限）；postMessage 不传 CRM 登录 Token 或监测 API Token。\n\n须配置 AMZGUARD_CRM_BRIDGE_ORIGIN，无需配置重定向回调。与 /crm/sso/start 共用每分钟 10 次的启动限额。消息协议和接入顺序见 integrations/crm-api.md。\n省略 storeKey/view/checkId 默认进入全部已启用店铺的只读巡检面板；旧单店参数继续兼容。",
         "tags": [
           "Browser SSO"
         ],

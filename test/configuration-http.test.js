@@ -100,6 +100,7 @@ syncBuiltinESMExports();\n`);
     ZINIAO_COMPANY: 'fixture-company', ZINIAO_USERNAME: 'fixture-user', ZINIAO_PASSWORD: 'fixture-password',
     DINGTALK_WEBHOOK: 'https://notification.example.invalid/fixture', DINGTALK_SECRET: 'fixture-secret',
     DINGTALK_OPS_WEBHOOK: 'https://notification.example.invalid/fixture-ops', DINGTALK_OPS_SECRET: 'fixture-ops-secret',
+    DINGTALK_BUSINESS_WEBHOOK: 'https://notification.example.invalid/fixture-business', DINGTALK_BUSINESS_SECRET: 'fixture-business-secret',
     CRM_ENDPOINT: 'https://export.example.invalid/fixture', CRM_TOKEN: 'fixture-outbound-crm-token',
     ALERT_WEBHOOK_URL: 'https://notification.example.invalid/fixture-alert', ALERT_WEBHOOK_AUTHORIZATION: 'fixture-alert-token',
     AMZGUARD_CRM_CLIENT_ID: 'fixture-crm', AMZGUARD_CRM_API_TOKEN: CRM_TOKEN, AMZGUARD_CRM_STORE_KEYS: 'US-A',

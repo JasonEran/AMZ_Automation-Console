@@ -144,6 +144,31 @@ test('deployment manifest excludes macOS AppleDouble sidecars from config artifa
   assert.match(script, /find config[^\n]+-name '\*\.example\.json'[^\n]+! -name '\._\*'/);
 });
 
+test('deployment manifest covers repository documentation without runtime or credential files', (t) => {
+  const root = tempDir('amzguard-manifest-test-');
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const dir of ['src', 'scripts', 'deploy', 'docs', 'test', '.github', 'config', 'out']) {
+    fs.mkdirSync(path.join(root, dir));
+  }
+  for (const file of ['README.md', 'CONTRIBUTING.md', 'SECURITY.md', 'CHANGELOG.md', '.gitignore',
+    '.github/PULL_REQUEST_TEMPLATE.md', 'docs/guide.md', 'config/config.example.json',
+    'config/config.json', 'out/report.json', 'DEPLOYED_RELEASE.json', 'DEPLOYED_MANIFEST.sha256']) {
+    fs.writeFileSync(path.join(root, file), 'fixture\n');
+  }
+  const run = () => spawnSync('sh', [path.resolve('deploy/manifest.sh'), root], { encoding: 'utf8' });
+  const before = run();
+  assert.equal(before.status, 0, before.stderr);
+  const files = before.stdout.trim().split('\n').map(line => line.slice(66));
+  assert.deepEqual(files.sort(), ['README.md', 'CONTRIBUTING.md', 'SECURITY.md', 'CHANGELOG.md', '.gitignore',
+    '.github/PULL_REQUEST_TEMPLATE.md', 'docs/guide.md', 'config/config.example.json'].sort());
+  fs.writeFileSync(path.join(root, 'CONTRIBUTING.md'), 'updated guide\n');
+  const after = run();
+  assert.equal(after.status, 0, after.stderr);
+  assert.notEqual(after.stdout, before.stdout, 'documentation changes must change the manifest');
+  fs.rmSync(path.join(root, '.github'), { recursive: true });
+  assert.notEqual(run().status, 0, 'missing release directories must not produce a successful partial manifest');
+});
+
 test('deployment pack rejects secret file types, symlinks and high-confidence credential content', (t) => {
   const packScript = fs.readFileSync(path.resolve('scripts/pack.sh'), 'utf8');
   const roots = [];
@@ -153,7 +178,7 @@ test('deployment pack rejects secret file types, symlinks and high-confidence cr
   const fixture = () => {
     const root = tempDir('amzguard-pack-test-');
     roots.push(root);
-    for (const dir of ['src', 'config', 'scripts', 'deploy', 'docs', 'test']) {
+    for (const dir of ['src', 'config', 'scripts', 'deploy', 'docs', 'test', '.github']) {
       fs.mkdirSync(path.join(root, dir), { recursive: true });
     }
     fs.writeFileSync(path.join(root, 'scripts', 'pack.sh'), packScript, { mode: 0o755 });
@@ -168,7 +193,7 @@ test('deployment pack rejects secret file types, symlinks and high-confidence cr
     fs.writeFileSync(path.join(root, 'src', 'out', 'runtime', 'report.json'), '{}\n');
     fs.mkdirSync(path.join(root, 'out'), { recursive: true });
     fs.writeFileSync(path.join(root, 'out', 'latest.json'), '{}\n');
-    for (const file of ['package.json', 'package-lock.json', 'README.md', 'DEPLOY.md', 'AGENTS.md', '.gitignore']) {
+    for (const file of ['package.json', 'package-lock.json', 'README.md', 'DEPLOY.md', 'AGENTS.md', 'CONTRIBUTING.md', 'SECURITY.md', 'CHANGELOG.md', '.gitignore']) {
       fs.writeFileSync(path.join(root, file), file.endsWith('.json') ? '{}\n' : 'fixture\n');
     }
     return root;
@@ -186,6 +211,9 @@ test('deployment pack rejects secret file types, symlinks and high-confidence cr
   assert.equal(entries.status, 0, entries.stderr);
   assert.doesNotMatch(entries.stdout, /^config\/(config|stores|asins)\.json$/m);
   assert.doesNotMatch(entries.stdout, /(^|\/)out\//m);
+  for (const file of ['CONTRIBUTING.md', 'SECURITY.md', 'CHANGELOG.md']) {
+    assert.ok(entries.stdout.split('\n').includes(file), `${file} must be included in the release`);
+  }
 
   const configBackupRoot = fixture();
   fs.writeFileSync(

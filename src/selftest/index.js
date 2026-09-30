@@ -709,7 +709,7 @@ export async function selfTest({ logger }) {
       }
     }
     ok(performanceCheck.extractor.includes('performance/v4'), '绩效 extractor marker 应为 v4');
-    ok(outletCheck.extractor.includes('outlet/v4'), 'Outlet extractor marker 应为 v4');
+    ok(outletCheck.extractor.includes('outlet/v5'), 'Outlet extractor marker 应为 v5');
   });
 
   check('绩效检查：DOM 标红告警必须异常', () => {
