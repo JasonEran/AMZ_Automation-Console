@@ -22,6 +22,7 @@
 | `amzguard-product-upload.timer` | 每分钟检查上传队列及待采集的批次结果 | 双闸开启时 enabled/active；默认关闭 |
 | `amzguard-product-upload.service` | 优先执行已授权上传；队列为空时读取一个批次结果 | 由 path/timer 触发，不常驻 |
 | `amzguard-manual@.service` | 单店/单项或单店/批次补跑 | 手动，不启用 |
+| `amzguard-collection-recovery.service` | 对符合条件的采集失败执行一次恢复；不重试业务异常或商品上传 | 由四个业务批次的 `OnFailure` 触发，不启用 |
 | `amzguard-channel-test.service` | 明确标记的通知测试；CRM 仅 dry-run | 手动，不启用 |
 
 ## 每日值守
@@ -139,6 +140,10 @@ Amazon Ads 可能同时下发旧固定 ID 筛选器和新版 KAT/Shadow DOM 筛�
 
 ## 手动补跑
 
+`config/config.json` 中的 `adsStatus.concurrency` 单独控制广告检查的跨店并发，程序默认值为 `1`，示例配置为 `2`；其他检查仍使用 `ziniao.concurrency`。只有正整数才作为广告专用上限，无效值回退到通用并发设置。组合内页面保持串行，DOM 与页面文本必须完整且一致，缩短固定等待不降低证据要求。
+
+批次采集失败后，恢复单元只处理可确认的失败类型，每个计划项最多执行一次；接近下一个定时批次时不启动恢复。原失败结果保持可见，恢复成功与否以新报告为准。该单元不执行商品上传，也不把业务异常作为采集失败重跑。
+
 手动任务只接收 `collector.env` 与 `channels.env`、同一 Xvfb 和紫鸟服务，不会获得 Dashboard 登录/Session/ingest 凭据；不需要也不允许把任何值复制进终端。格式是：
 
 ```text
@@ -216,6 +221,8 @@ find /opt/amzguard/out -xdev -path '*/.evidence-quarantine' -prune -o -type f ! 
 ## 钉钉与 CRM
 
 通知故障与主报告独立：即使外部通道失败，报告必须先落盘，Dashboard 中会显示通道失败。
+
+可选业务机器人使用 `DINGTALK_BUSINESS_WEBHOOK` 与 `DINGTALK_BUSINESS_SECRET`；未启用签名时 Secret 可留空。它只接收广告和绩效的业务异常，采集故障继续走运维通道，原常规通道保持原有投递规则。Linux 凭据只存入受保护的 `channels.env`，macOS 使用钥匙串；不得写入示例配置或其他服务的环境文件。
 
 经维护负责人确认后执行测试：
 

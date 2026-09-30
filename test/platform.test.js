@@ -641,7 +641,7 @@ test('business DingTalk robot receives only ads and performance anomalies', asyn
         dingtalk: { channels: [
           { name: 'regular', enabled: true, webhook: 'https://oapi.dingtalk.com/robot/send?access_token=REGULAR_FIXTURE', severities: ['OK', 'CRITICAL'] },
           { name: 'operations', enabled: true, webhook: 'https://oapi.dingtalk.com/robot/send?access_token=OPS_FIXTURE', severities: ['ERROR', 'WARN'] },
-          { name: 'business', enabled: true, webhook: 'https://oapi.dingtalk.com/robot/send?access_token=BUSINESS_FIXTURE', severities: ['CRITICAL', 'WARN'] },
+          { name: 'business', enabled: true, webhook: 'https://oapi.dingtalk.com/robot/send?access_token=' + 'BUSINESS_FIXTURE', severities: ['CRITICAL', 'WARN'] },
         ] },
       },
     },
@@ -710,7 +710,12 @@ test('DINGTALK_BUSINESS_WEBHOOK adds a business route without moving the existin
   const storesFile = path.join(root, 'stores.json');
   fs.writeFileSync(configFile, JSON.stringify({ paths: { outDir: root } }));
   fs.writeFileSync(storesFile, JSON.stringify({ stores: [] }));
-  const script = `import { loadConfig } from ${JSON.stringify(path.join(process.cwd(), 'src/lib/config.js'))};
+  const script = `import childProcess from 'node:child_process';
+    import { syncBuiltinESMExports } from 'node:module';
+    // Missing optional credentials must never consult the developer's Keychain.
+    childProcess.execFileSync = () => { throw new Error('offline credential fixture'); };
+    syncBuiltinESMExports();
+    const { loadConfig } = await import(${JSON.stringify(path.join(process.cwd(), 'src/lib/config.js'))});
     const { config } = loadConfig({ configFile: process.argv[1], storesFile: process.argv[2] });
     const channels = (config.alert.dingtalk.channels || []).map((channel) => ({
       name: channel.name, enabled: channel.enabled, severities: channel.severities,
@@ -720,12 +725,13 @@ test('DINGTALK_BUSINESS_WEBHOOK adds a business route without moving the existin
   const result = spawnSync(process.execPath, ['--input-type=module', '-e', script, configFile, storesFile], {
     encoding: 'utf8',
     env: {
-      ...process.env,
+      PATH: process.env.PATH,
+      TMPDIR: process.env.TMPDIR,
       DINGTALK_WEBHOOK: 'https://oapi.dingtalk.com/robot/send?access_token=REGULAR_FIXTURE',
       DINGTALK_SECRET: 'regular-fixture-secret',
       DINGTALK_OPS_WEBHOOK: 'https://oapi.dingtalk.com/robot/send?access_token=OPS_FIXTURE',
       DINGTALK_OPS_SECRET: 'ops-fixture-secret',
-      DINGTALK_BUSINESS_WEBHOOK: 'https://oapi.dingtalk.com/robot/send?access_token=BUSINESS_FIXTURE',
+      DINGTALK_BUSINESS_WEBHOOK: 'https://oapi.dingtalk.com/robot/send?access_token=' + 'BUSINESS_FIXTURE',
       DINGTALK_BUSINESS_SECRET: '',
     },
   });
