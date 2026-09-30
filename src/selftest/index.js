@@ -2047,6 +2047,50 @@ export async function selfTest({ logger }) {
     eq(splitShadowDom.skus[0].asin, 'B0FTG44VKR', 'split shadow row ASIN binding');
     eq(splitShadowDom.skus[0].sku, 'F-920-1T', 'split shadow row SKU binding');
 
+    // 2026-09-29 FENG inventory page: the row action label sits 12 hops under
+    // its tr, and the same phrase is also an inline token outside the table.
+    let deepAction = e('button', { class: 'awsui_button_vjswe' }, {},
+      e('span', {}, {}, '创建奥特莱斯限时促销'));
+    for (const tag of ['div', 'div', 'div', 'div', 'span', 'div', 'div', 'div', 'div', 'td']) {
+      deepAction = e(tag, {}, {}, deepAction);
+    }
+    const deepRow = e('tr', { class: 'awsui_row_wih1l' }, {},
+      e('td', {}, {}, 'B0HHDTPF8G'),
+      deepAction);
+    const tokenPhrase = e('span', { class: 'awsui_inline-token_1i2wg awsui_token_dm8gx' }, {},
+      e('span', {}, {}, '创建奥特莱斯限时促销'));
+    const fbaEnv = F.envFor(e('body', {}, {},
+      e('main', {}, {},
+        e('h1', {}, {}, '管理亚马逊库存'),
+        tokenPhrase,
+        e('div', {
+          class: 'awsui_wrapper_wih1l_1qsa9_73 awsui_variant-full-page_wih1l_1qsa9_174 awsui_has-footer_wih1l_1qsa9_83 awsui_has-header_wih1l_1qsa9_86',
+          role: 'region',
+        }, {},
+          e('table', { class: 'awsui_table_wih1l_1qsa9_63', role: 'treegrid' }, {}, deepRow),
+          e('span', {}, {}, '1~1，共 1')),
+      ),
+    ));
+    const fbaDom = new Function('window', 'document', 'location', 'NodeFilter', outletCheck.extractor)(
+      fbaEnv.window, fbaEnv.document, fbaEnv.location, NodeFilter,
+    );
+    const fbaText = outletCheck.parseText('管理亚马逊库存 批量操作 创建奥特莱斯限时促销 推荐 B0HHDTPF8G 创建奥特莱斯限时促销 1~1，共 1');
+    const fba = outletCheck.judge({
+      store: { key: 'FENG', market: 'US' },
+      dom: fbaDom,
+      txt: fbaText,
+      prev: { metrics: { dealCount: 1, dealKeys: [] } },
+    });
+    eq(fbaDom.createDealCount, 1, 'deep inventory row action count');
+    eq(fbaDom.skus[0].asin, 'B0HHDTPF8G', 'deep inventory row ASIN');
+    eq(fbaDom.ambiguousActionCount, 0, 'inline token is not an ambiguous action');
+    eq(fbaDom.ignoredFilterControlCount > 0, true, 'inline token ignored as filter');
+    eq(fbaDom.reportedTotal, 1, 'range total 1~1，共 1');
+    eq(fbaText.mentionCount, 1, 'toolbar phrase is not a second deal');
+    eq(fbaText.reportedTotal, 1, 'text range total');
+    eq(fba.metrics.collectionStatus, 'COMPLETE', 'deep inventory row collection');
+    eq(fba.status, 'NEW_DEAL', 'newly seen outlet row stays a business result');
+
     const overflowHosts = Array.from({ length: 512 }, (_, i) => {
       const host = e(`kat-shadow-${i}`, {}, {});
       host.shadowRoot = e('div', {}, {});
