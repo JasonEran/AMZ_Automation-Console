@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { INTELLIGENCE_PRODUCT_EXTRACTOR } from '../extractors/intelligence-product.js';
-import { classifyAsinProductReadSafety, classifyPageSafety, rawPageIdentity } from '../lib/page-safety.js';
+import { canRetryPageIdentity, classifyAsinProductReadSafety, classifyPageSafety, rawPageIdentity } from '../lib/page-safety.js';
 import { redactText, sanitizeForStorage } from '../lib/redact.js';
 
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -65,11 +65,21 @@ export async function collectProduct({zn,storeId,target,config,safety=classifyAs
     await wait(Math.max(1500,Math.min(5000,config.asinHealth?.settleMs||config.ziniao?.settleMs||2500)));
     for(let attempt=0;attempt<2;attempt++) {
       const pre=await safety({zn,storeId,expectedAsin:target.asin});
-      if(!pre.safe)throw new Error(pre.code||'PAGE_SAFETY_FAILED');
+      if(!pre.safe) {
+        // A non-auth URL move discards the unread page and starts one fresh
+        // gated read. Sign-in, block, and a second move still fail closed.
+        if(canRetryPageIdentity(pre,attempt,1)){await wait(500);continue;}
+        throw new Error(pre.code||'PAGE_SAFETY_FAILED');
+      }
       const dom=(await zn.execExtract(storeId,INTELLIGENCE_PRODUCT_EXTRACTOR,{timeoutMs:45000})).result;
       const pageText=(await zn.content(storeId,{format:'text',timeoutMs:45000})).text||'';
       const post=await safety({zn,storeId,expectedAsin:target.asin});
-      if(!post.safe||!rawPageIdentity(pre)||rawPageIdentity(pre)!==rawPageIdentity(post))throw new Error(post.code||'PAGE_IDENTITY_CHANGED');
+      const identityMoved=!post.safe||!rawPageIdentity(pre)||rawPageIdentity(pre)!==rawPageIdentity(post);
+      if(identityMoved) {
+        const moved=!post.safe?post:{code:'PAGE_CHANGED_DURING_EVIDENCE_READ',authSensitive:false,blocked:false};
+        if(canRetryPageIdentity(moved,attempt,1)){await wait(500);continue;}
+        throw new Error((!post.safe&&post.code)||'PAGE_IDENTITY_CHANGED');
+      }
       const contentSafety=classifyPageSafety({currentUrl:rawPageIdentity(post),dom:{landed:!!dom.title},pageText});
       if(!contentSafety.safe)throw new Error(contentSafety.code||'CONTENT_UNSAFE');
       if(dom.asin!==target.asin||(dom.selectedAsin&&dom.selectedAsin!==target.asin))throw new Error('ASIN_IDENTITY_MISMATCH');

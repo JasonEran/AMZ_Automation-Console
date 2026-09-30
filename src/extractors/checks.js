@@ -605,18 +605,18 @@ if (out.rating === null) out.notes.push("no star rating found on the detail page
  * "Create outlet deal". New eligible SKUs versus the previous run are what the
  * requirement calls a new activity.
  */
-export const OUTLET_EXTRACTOR = wrap('outlet/v4', String.raw`
+export const OUTLET_EXTRACTOR = wrap('outlet/v5', String.raw`
 out.landed = /inventory (health|age)|manage inventory|outlet|recommended action|\u7ba1\u7406.*\u5e93\u5b58|\u5e93\u5b58\u72b6\u51b5|\u5965\u7279\u83b1\u65af|\u5efa\u8bae\u64cd\u4f5c/i.test(BT);
 out.createDealCount = 0; out.skus = []; out.actionLabels = []; out.ignoredFilterControlCount = 0;
 out.ambiguousActionCount = 0; out.ambiguousActions = []; out.duplicateActionCount = 0;
 out.zeroResultNodeCount = 0; out.ambiguousZeroResultNodeCount = 0; out.ignoredFilterZeroCount = 0;
 out.zeroCandidates = []; out.reportedTotal = null; out.reportedTotalReliable = false; out.reportedTotalSourceCount = 0; out.reportedTotalConflict = false;
-out.zeroResults = /0\s*results|did not return any results|0\s*\u6761\u7ed3\u679c|\u672a\u8fd4\u56de\u4efb\u4f55\u7ed3\u679c/i.test(BT);
+out.zeroResults = /0\s*results|did not return any results|0\s*\u6761\u7ed3\u679c|\u672a\u8fd4\u56de\u4efb\u4f55\u7ed3\u679c|\u65e0\u7ed3\u679c/i.test(BT);
 
 var LINK_RE = /^(create outlet deal|create an outlet deal|outlet deal|\u521b\u5efa\u5965\u7279\u83b1\u65af\u9650\u65f6\u4fc3\u9500)$/i;
-var ZERO_NODE_RE = /^(?:0\s*results?|0\s*\u6761\u7ed3\u679c|your query did not return any results|\u672a\u8fd4\u56de\u4efb\u4f55\u7ed3\u679c)$/i;
-var TOTAL_NODE_RE = /^(?:total(?:\s+results?)?\s*[:\-]?\s*(\d+)|(\d+)\s+results?|\u5171\s*(\d+)\s*\u6761\u7ed3\u679c|\u603b\u8ba1\s*[:\uff1a]\s*(\d+)|(\d+)\s*\u6761\u7ed3\u679c)$/i;
-var FILTER_META_RE = /(?:^|[-_ ])(?:selected[-_ ]?)?(?:filter|facet|chip)s?(?:$|[-_ ])/i;
+var ZERO_NODE_RE = /^(?:0\s*results?|0\s*\u6761\u7ed3\u679c|your query did not return any results|\u672a\u8fd4\u56de\u4efb\u4f55\u7ed3\u679c|\u65e0\u7ed3\u679c)$/i;
+var TOTAL_NODE_RE = /^(?:total(?:\s+results?)?\s*[:\-]?\s*(\d+)|(\d+)\s+results?|\u5171\s*(\d+)\s*\u6761\u7ed3\u679c|\u603b\u8ba1\s*[:\uff1a]\s*(\d+)|(\d+)\s*\u6761\u7ed3\u679c|\d+\s*[~\uff5e]\s*\d+\s*[,\uff0c]\s*\u5171\s*(\d+))$/i;
+var FILTER_META_RE = /(?:^|[-_ ])(?:selected[-_ ]?)?(?:filter|facet|chip|token)s?(?:$|[-_ ])/i;
 var RESULT_META_RE = /(?:^|[-_ ])(?:result|results|table|grid|data-grid|product-list|inventory-list|inventory-table)(?:$|[-_ ])/i;
 var SELECTED_FILTER_TEXT_RE = /selected filters?|filter criteria|\u5df2\u9009\u7b5b\u9009\u6761\u4ef6/i;
 
@@ -641,8 +641,13 @@ function outletContext(el) {
     if (FILTER_META_RE.test(meta) || (nt.length > 0 && nt.length <= 400 && SELECTED_FILTER_TEXT_RE.test(nt))) {
       filterLike = true; break;
     }
+    var role = "";
+    try { role = norm(node.getAttribute("role")); } catch (eRole) {}
+    // 2026-09-29 FENG inventory: the "1~1, total" counter is in the table
+    // footer, a sibling of the table inside the captured region wrapper.
     if (/^(?:table|thead|tbody|tfoot)$/.test(tag) || /^(?:table|grid|rowgroup)$/i.test(meta)
-        || RESULT_META_RE.test(meta)) {
+        || RESULT_META_RE.test(meta)
+        || (role === "region" && /(?:^|[-_ ])wrapper(?:$|[-_ ])/.test(meta) && /(?:^|[-_ ])has-footer(?:$|[-_ ])/.test(meta))) {
       resultLike = true; break;
     }
     if (tag === "main" || tag === "body" || nt.length > 800) break;
@@ -652,7 +657,7 @@ function outletContext(el) {
 }
 function outletRow(el) {
   var node = el, hops = 0;
-  while (node && hops < 12) {
+  while (node && hops < 14) {
     var tag = tagOf(node), role = "", meta = outletMeta(node);
     try { role = norm(node.getAttribute("role")); } catch (e) {}
     if (tag === "tr" || /^(?:row|listitem)$/i.test(role)
@@ -735,7 +740,7 @@ for (var i = 0; i < els.length; i++) {
   }
   var totalNode = TOTAL_NODE_RE.exec(t);
   if (totalNode && isVisible(el)) {
-    var totalCtx = outletContext(el), totalValue = parseInt(totalNode[1] || totalNode[2] || totalNode[3] || totalNode[4] || totalNode[5], 10);
+    var totalCtx = outletContext(el), totalValue = parseInt(totalNode[1] || totalNode[2] || totalNode[3] || totalNode[4] || totalNode[5] || totalNode[6], 10);
     if (totalValue > 0 && totalCtx.resultLike && !totalCtx.filterLike) {
       out.reportedTotalSourceCount++;
       if (out.reportedTotal === null) out.reportedTotal = totalValue;

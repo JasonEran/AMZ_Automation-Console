@@ -1402,7 +1402,7 @@ export async function selfTest({ logger }) {
   });
 
   check('Reviews：中文买家评论页可落地并识别低星', () => {
-    const txt = reviewsCheck.parseText('买家评论 星级评定 2 / 5');
+    const txt = reviewsCheck.parseText('买家评论 星级评定 2 / 5 星');
     ok(txt.landed && txt.lowCount === 1, '中文 Reviews 文本应落地并读取低星');
     const env = F.envFor(e('body', {}, {},
       e('h1', {}, {}, '买家评论'),
@@ -1412,6 +1412,33 @@ export async function selfTest({ logger }) {
       env.window, env.document, env.location, NodeFilter,
     );
     ok(dom.landed && dom.lowCount === 1, '中文 Reviews DOM 应落地并读取低星');
+  });
+
+  check('Reviews：评论正文里裸露的 N/5 不是评分标签（2026-09-17 真机回归）', () => {
+    const pageText = [
+      '买家评论',
+      '56 条评论',
+      '筛选依据',
+      '订单类型',
+      '星级评定 (3)',
+      '3 星',
+      '2 星',
+      '1 星',
+      '时间段',
+      '标记为已完成的包含在内',
+      'A.R.E.K. Verdict: 3/5. Installation was easy, but Plain Paper performance is poor.',
+      'Daniel B. 于 2026年9月13日 发布的评论',
+      "don't work",
+      'They sent the wrong size. I would say 4/5 overall.',
+      '3 out of 5 stars',
+      '1 out of 5 stars',
+      '2 out of 5 stars',
+      '1 / 5',
+    ].join('\n');
+    const parsed = reviewsCheck.parseText(pageText);
+    eq(parsed.landed, true, '仍应落地');
+    eq(parsed.total, 4, '只有评分标签（带星后缀或整行独立）计入文本星数');
+    eq(parsed.lowCount, 4, '评论正文中的裸 3/5、4/5 不得计入低星');
   });
 
   check('Reviews：相邻评论不得把后一条低星绑定到前一条 ASIN', () => {
@@ -1533,7 +1560,7 @@ export async function selfTest({ logger }) {
   });
 
   check('Reviews：页面文本只证明低星数量，不猜测相邻 ASIN', () => {
-    const parsed = reviewsCheck.parseText('Customer Reviews Parent ASINB0AAAAAA11 good review 5 out of 5 trailing labels Parent ASINB0BBBBBB22 bad review 1 out of 5');
+    const parsed = reviewsCheck.parseText('Customer Reviews Parent ASINB0AAAAAA11 good review 5 out of 5 stars trailing labels Parent ASINB0BBBBBB22 bad review 1 out of 5 stars');
     eq(parsed.lowCount, 1, 'low count');
     eq(parsed.lowReviews[0].asin, undefined, 'text fallback must stay unbound');
     eq(parsed.lowReviews[0].summary, undefined, 'text fallback must not invent row summary');

@@ -1544,6 +1544,15 @@ async function buildReviewOwnershipByStore({ config, stores, logger, override })
   }
 }
 
+/** Ads-status can run two stores at once without raising the other checks. */
+export function storeConcurrencyLimit({ checkId, config = {}, opts = {} }) {
+  if (checkId === 'ads-status') {
+    const ads = Number(config.adsStatus?.concurrency);
+    if (Number.isInteger(ads) && ads >= 1) return ads;
+  }
+  return Math.max(1, opts.concurrency ?? config.ziniao?.concurrency ?? 1);
+}
+
 export async function runGenericCheck({ zn, config, stores, logger, def, opts = {} }) {
   const startedAt = new Date();
   const stamp = bjStamp(startedAt);
@@ -1557,7 +1566,7 @@ export async function runGenericCheck({ zn, config, stores, logger, def, opts = 
   const state = stateStore.read();
   const alerter = createAlerter({ config, logger, outDir: config.outDir });
 
-  const limit = Math.max(1, opts.concurrency ?? config.ziniao.concurrency ?? 1);
+  const limit = storeConcurrencyLimit({ checkId: def.id, config, opts });
   logger.info(`[${def.id}] ${def.title} — ${stores.length} 个店铺，批次=${slot}，${limit > 1 ? `并发=${limit}` : '步进'}`);
 
   const prevByKey = new Map(stores.map((s) => [s.key, state.stores?.[s.key]]));

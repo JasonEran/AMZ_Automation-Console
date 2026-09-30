@@ -215,14 +215,31 @@ export function assertNoInlineSecrets(fileConfig, filePath = 'config.json') {
   );
 }
 
+function businessChannel(credentials) {
+  if (!credentials?.webhook) return null;
+  return {
+    name: 'business', enabled: true,
+    webhook: credentials.webhook, secret: credentials.secret || '',
+    // Ads and performance business findings only. Other checks and collection
+    // failures are rejected again by name inside the alerter.
+    severities: ['CRITICAL', 'WARN'], atMobiles: [], atAll: false,
+  };
+}
+
+function withBusinessChannel(channels, business) {
+  if (!business || channels.some((channel) => channel?.name === 'business')) return channels;
+  return [...channels, business];
+}
+
 /** Protected environment/Keychain overrides; secret values never come from JSON. */
 function applyEnv(cfg) {
   const env = process.env;
   const configuredChannels = Array.isArray(cfg.alert.dingtalk.channels)
     ? cfg.alert.dingtalk.channels
     : [];
+  const business = businessChannel(loadDingTalkCredentials({ env, channel: 'business' }).credentials);
   if (configuredChannels.length) {
-    cfg.alert.dingtalk.channels = configuredChannels.map((channel) => {
+    cfg.alert.dingtalk.channels = withBusinessChannel(configuredChannels.map((channel) => {
       const resolved = loadDingTalkCredentials({ env, channel: channel.name || 'regular' });
       return {
         ...channel,
@@ -230,12 +247,13 @@ function applyEnv(cfg) {
         webhook: resolved.credentials.webhook,
         secret: resolved.credentials.secret,
       };
-    });
+    }), business);
+    if (business) cfg.alert.dingtalk.enabled = true;
   } else {
     const regular = loadDingTalkCredentials({ env, channel: 'regular' });
     const operations = loadDingTalkCredentials({ env, channel: 'operations' });
     if (regular.credentials.webhook && operations.credentials.webhook) {
-      cfg.alert.dingtalk.channels = [
+      cfg.alert.dingtalk.channels = withBusinessChannel([
         {
           name: 'regular', enabled: true,
           webhook: regular.credentials.webhook, secret: regular.credentials.secret,
@@ -246,21 +264,37 @@ function applyEnv(cfg) {
           webhook: operations.credentials.webhook, secret: operations.credentials.secret,
           severities: ['ERROR', 'WARN'], atMobiles: [], atAll: false,
         },
-      ];
+      ], business);
       cfg.alert.dingtalk.enabled = true;
       cfg.alert.dingtalk.webhook = '';
       cfg.alert.dingtalk.secret = '';
+    } else if (regular.credentials.webhook && business) {
+      // The legacy robot keeps every severity. Business is an extra route.
+      cfg.alert.dingtalk.channels = [
+        {
+          name: 'regular', enabled: true,
+          webhook: regular.credentials.webhook, secret: regular.credentials.secret,
+          severities: ['OK', 'WARN', 'CRITICAL', 'ERROR'], atMobiles: [], atAll: false,
+        },
+        business,
+      ];
+      cfg.alert.dingtalk.webhook = '';
+      cfg.alert.dingtalk.secret = '';
+      cfg.alert.dingtalk.enabled = true;
     } else if (regular.credentials.webhook) {
       // Legacy single-channel operation still receives every severity.
       cfg.alert.dingtalk.webhook = regular.credentials.webhook;
       cfg.alert.dingtalk.secret = regular.credentials.secret;
       cfg.alert.dingtalk.enabled = true;
     } else if (operations.credentials.webhook) {
-      cfg.alert.dingtalk.channels = [{
+      cfg.alert.dingtalk.channels = withBusinessChannel([{
         name: 'operations', enabled: true,
         webhook: operations.credentials.webhook, secret: operations.credentials.secret,
         severities: ['ERROR', 'WARN', 'CRITICAL'], atMobiles: [], atAll: false,
-      }];
+      }], business);
+      cfg.alert.dingtalk.enabled = true;
+    } else if (business) {
+      cfg.alert.dingtalk.channels = [business];
       cfg.alert.dingtalk.enabled = true;
     }
   }
