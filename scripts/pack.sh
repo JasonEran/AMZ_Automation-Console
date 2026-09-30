@@ -120,7 +120,7 @@ fi
 # Split the most recognisable literals so this scanner does not match itself.
 private_key_re='-----BEGIN (RSA |OPENSSH |EC |ENCRYPTED )?PRIV''ATE KEY-----'
 dingtalk_token_re='https://oapi\.dingtalk\.com/robot/send\?access_''token=[A-Za-z0-9_-]{16,}'
-credential_assignment_re='^(ZINIAO_(COMPANY|USERNAME|PASSWORD)|DINGTALK_(WEBHOOK|SECRET|OPS_WEBHOOK|OPS_SECRET)|CRM_(TOKEN|ENDPOINT)|DASHBOARD_(PASSWORD|SESSION_SECRET)|AMZGUARD_INGEST_TOKEN)=.{8,}$'
+credential_assignment_re='^(ZINIAO_(COMPANY|USERNAME|PASSWORD)|DINGTALK_(WEBHOOK|SECRET|OPS_WEBHOOK|OPS_SECRET|BUSINESS_WEBHOOK|BUSINESS_SECRET)|CRM_(TOKEN|ENDPOINT)|DASHBOARD_(PASSWORD|SESSION_SECRET)|AMZGUARD_INGEST_TOKEN)=.{8,}$'
 high_confidence_re="${private_key_re}|${dingtalk_token_re}|SEC[0-9A-Fa-f]{32,}|(AKIA|ASIA)[A-Z0-9]{16}|Bearer[[:space:]]+[A-Za-z0-9._~+/-]{20,}|${credential_assignment_re}"
 while IFS= read -r pack_entry; do
   [[ "$pack_entry" == */ ]] && continue
