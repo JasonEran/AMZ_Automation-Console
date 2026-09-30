@@ -11,6 +11,8 @@
     "test": "bash scripts/test.sh",
     "test:unit": "bash scripts/test.sh unit",
     "docs:check": "node scripts/check-docs.mjs",
+    "secrets:check": "node scripts/check-secrets.mjs",
+    "secrets:test": "node scripts/check-secrets.mjs --self-test",
     "serve": "node src/server.js",
     "checks": "node src/cli.js checks",
     "doctor": "node src/cli.js doctor",
