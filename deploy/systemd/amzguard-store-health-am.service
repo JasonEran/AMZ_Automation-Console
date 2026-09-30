@@ -1,5 +1,6 @@
 [Unit]
 Description=AMZ Guard collection slot am
+OnFailure=amzguard-collection-recovery.service
 Requires=amzguard-ziniao.service
 After=amzguard-ziniao.service network-online.target
 

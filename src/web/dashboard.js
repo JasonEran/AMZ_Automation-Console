@@ -10,6 +10,28 @@ const INTELLIGENCE_MARKUP = intelligenceAsset('intelligence.html');
 const INTELLIGENCE_STYLES = intelligenceAsset('intelligence.css');
 const INTELLIGENCE_CLIENT = intelligenceAsset('intelligence-client.js');
 
+/** Short place label for one page-evidence business matter, plus its existing feature page. */
+export function businessItemPlace(issue, checks) {
+  const pages = {
+    'store-health': 'store-risk',
+    performance: 'store-risk',
+    feedback: 'customer-voice',
+    inbox: 'customer-voice',
+    reviews: 'customer-voice',
+    voc: 'customer-voice',
+    'asin-health': 'product-status',
+    outlet: 'product-status',
+    'ads-status': 'ads-watch',
+  };
+  const source = issue && typeof issue === 'object' ? issue : {};
+  const list = Array.isArray(checks) ? checks : [];
+  const check = list.find((item) => item && item.id === source.checkId);
+  const area = (check && check.short) || source.checkTitle || source.checkId || '检查项';
+  const storeName = source.storeName || source.storeKey || '店铺';
+  const view = Object.prototype.hasOwnProperty.call(pages, source.checkId) ? pages[source.checkId] : null;
+  return { label: storeName + ' · ' + area, view };
+}
+
 /**
  * Single-file operations dashboard. It intentionally has no build step or
  * third-party assets, so the collector can serve it anywhere Node runs.
@@ -77,13 +99,16 @@ export function renderDashboard({ crmReadOnly = false } = {}) {
   .overall .state:before{content:"";width:9px;height:9px;border-radius:50%;background:currentColor}
   .overall .state.a-NORMAL{color:var(--accent)}.overall .state.a-BUSINESS{color:#ff837a}.overall .state.a-COLLECTION{color:#c7a7ef}.overall .state.a-PENDING{color:#b8c2bd}
   .overall .sub{color:#93a49c;font-size:11px;margin-top:5px}
-  .kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:13px;margin:15px 0}
+  .kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:13px;margin:15px 0;align-items:start}
   .kpi{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:16px 17px;min-height:108px;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 3px 12px rgba(20,32,28,.025)}
   .kpi-top{display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:12px}
   .kpi-icon{width:28px;height:28px;border-radius:8px;background:var(--idle-soft);display:grid;place-items:center;color:var(--ink);font-size:11px;font-weight:800}
   .kpi-value{font-size:27px;line-height:1;font-weight:760;letter-spacing:-.8px;margin-top:9px}
   .kpi-value small{font-size:12px;color:var(--muted);font-weight:500;letter-spacing:0;margin-left:4px}
   .kpi-note{font-size:11px;color:var(--muted);margin-top:5px}
+  .kpi-places{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:4px;max-height:220px;overflow:auto}
+  .kpi-place{display:block;font-size:11px;line-height:1.35;color:var(--ink);background:var(--bad-soft);border-radius:7px;padding:4px 7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  a.kpi-place:hover{text-decoration:underline;text-underline-offset:2px}
   .progress{height:4px;background:var(--idle-soft);border-radius:99px;margin-top:9px;overflow:hidden}
   .progress span{display:block;height:100%;background:var(--ok);border-radius:99px}
   .readybar{margin-top:15px;background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:14px 16px;display:flex;align-items:center;gap:15px;box-shadow:0 3px 12px rgba(20,32,28,.025)}
@@ -193,6 +218,7 @@ export function renderDashboard({ crmReadOnly = false } = {}) {
   .noscript{padding:20px;background:var(--bad-soft);color:var(--bad)}
   @media(max-width:1200px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
   @media(max-width:1100px){.app{grid-template-columns:72px minmax(0,1fr)}.sidebar{padding:20px 10px}.brand{padding:0 9px 24px}.brand>div:last-child,.navlabel,.nav a span:not(.navicon),.sidefoot p{display:none}.nav a{justify-content:center;padding:10px}.sidefoot{padding:16px 0}.live{justify-content:center}.two-col,.upload-grid{grid-template-columns:1fr}.check-list{display:grid;grid-template-columns:repeat(2,1fr);column-gap:24px}}
+  @media(max-width:760px){.kpi-business{grid-column:1/-1}}
   @media(max-width:760px){.app{display:block}.sidebar{position:static;height:auto;padding:10px 15px;display:block;max-width:100%;overflow:hidden}.brand{padding:0 0 9px}.brand>div:last-child{display:block}.navlabel,.sidefoot{display:none}.nav{display:flex;min-width:0;overflow-x:auto;padding-bottom:2px}.nav a{padding:8px 10px;flex:none}.topbar{height:62px;padding:0 16px;min-width:0}.topbar>div:first-child{min-width:0}.topbar h1,.crumb{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.content{padding:16px 14px 40px;width:100%;max-width:100%}.hero{padding:20px;display:block}.hero:after{right:-60px}.overall{margin-top:18px;width:210px;max-width:100%}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.readybar{display:block}.ready-items{margin-top:10px}.runbar{grid-template-columns:1fr}.run-value{text-align:left}.schedule{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.slot:nth-child(2){border-right:0}.controls{width:100%;margin:10px 0 0;min-width:0}.section-head{flex-wrap:wrap;min-width:0}.control{min-width:0}input.control{flex:1;width:auto}.check-list{display:block}.sync{display:none}.issue{grid-template-columns:8px minmax(72px,90px) minmax(0,1fr)}.issue .badge{display:none}.issue-list{padding-left:14px;padding-right:14px}.session-row{grid-template-columns:1fr auto}.session-row .session-time,.session-row .session-action{grid-column:1/-1}.section,.hero,.readybar,.runbar,.two-col{min-width:0;max-width:100%}}
   @media(max-width:760px){.asin-summary,.evidence-summary,.upload-result-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.asin-row,.recommendation-row,.evidence-gap-row{grid-template-columns:1fr auto}.asin-row .reason,.recommendation-row .reason,.evidence-gap-row .reason{grid-column:1/-1}.asin-row .next{grid-column:1/-1}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.upload-fields,.settings-form{grid-template-columns:1fr}.upload-row,.rule-row,.user-row{grid-template-columns:1fr auto}.upload-row>*:nth-child(3),.upload-row>*:nth-child(4),.rule-row>*:nth-child(2),.user-row>*:nth-child(n+3){grid-column:1/-1}}
   @media(max-width:430px){.brand small{display:none}.hero h2{font-size:21px}.kpi{min-height:100px;padding:14px}.kpi-value{font-size:23px}.schedule{grid-template-columns:1fr}.slot{border-right:0;border-bottom:1px solid var(--line);padding-bottom:13px}.slot:last-child{border-bottom:0}.controls{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.controls input{grid-column:1/-1}.metrics{grid-template-columns:1fr}.pager{justify-content:center;padding-left:8px;padding-right:8px}.drawer{width:100vw}.drawer-body,.drawer-head{padding-left:16px;padding-right:16px}}
@@ -379,6 +405,7 @@ ${ONBOARDING_MARKUP}
   var activeView=null;
   var VIEW_META={overview:['巡检总览','所有店铺 · 今日巡检与处置'],"store-risk":['店铺风险','账户健康与绩效风险'],"customer-voice":['客户声音','Feedback、Inbox、Reviews 与 VOC'],"product-status":['商品状态','ASIN 可售性与 Outlet 监测'],intelligence:['竞品情报','主销与对标 · 商品观察 · 变化证据'],"ads-watch":['广告值守','广告组合与活动状态 · 时段合规'],upload:['上传中心','受控 Amazon 转交通道'],system:['系统保障','紫鸟、采集、证据与通知状态'],stores:['店铺配置','店铺接入与看板显示'],users:['用户管理','账户、角色与密码安全']};
   var CHECK_GROUPS={risk:['store-health','performance'],voice:['feedback','inbox','reviews','voc'],product:['asin-health','outlet'],ads:['ads-status']};
+  var businessItemPlace = ${businessItemPlace.toString()};
   var LABEL = {OK:'正常',WARN:'业务关注',CRITICAL:'业务异常',ERROR:'采集异常',NOT_CONFIGURED:'配置缺失',NOT_COVERED:'本批未覆盖',NEVER_RUN:'尚未运行',SKIPPED:'已跳过'};
   var CELL_LABEL = {OK:'正常',WARN:'业务关注',CRITICAL:'业务异常',ERROR:'采集异常',NOT_CONFIGURED:'配置缺失',NOT_COVERED:'未覆盖',NEVER_RUN:'未运行',SKIPPED:'跳过'};
   var ACTION_LABEL = {NORMAL:'无需处理',BUSINESS:'运营处理',COLLECTION:'技术修复',PENDING:'等待执行'};
@@ -427,16 +454,28 @@ ${ONBOARDING_MARKUP}
     q('#syncTime').textContent=data.generatedAtHuman+' 北京时间';
   }
 
+  function businessPlacesHtml(){
+    var rows=(data.issues||[]).filter(function(x){return x.actionState==='BUSINESS'});
+    if(!rows.length)return '';
+    return '<ul class="kpi-places" aria-label="运营待处理位置">'+rows.map(function(x){
+      var place=businessItemPlace(x,data.checks);
+      var page=place.view&&VIEW_META[place.view]?VIEW_META[place.view][0]:'';
+      var title=place.label+(page?' · 打开'+page:'');
+      if(!place.view||!VIEW_META[place.view])return '<li><span class="kpi-place" title="'+esc(title)+'">'+esc(place.label)+'</span></li>';
+      return '<li><a class="kpi-place" href="#'+esc(place.view)+'" data-view="'+esc(place.view)+'" title="'+esc(title)+'">'+esc(place.label)+'</a></li>';
+    }).join('')+'</ul>';
+  }
+
   function renderKpis(){
     var s=data.summary;var coverage=pct(s.completedCells,s.totalCells);
     var items=[
       {name:'已纳管店铺',value:s.stores,unit:'家',note:s.healthyStores+' 家全部检查无需处理',icon:'店'},
       {name:'正常工作单元',value:s.normalActionCells,unit:'项',note:'覆盖率 '+coverage+'% · '+s.completedCells+'/'+s.totalCells,icon:'✓',progress:coverage},
-      {name:'运营待处理',value:s.businessActionCells,unit:'项',note:'页面证据确认的业务事项',icon:'运',bad:s.businessActionCells>0},
+      {name:'运营待处理',value:s.businessActionCells,unit:'项',note:'页面证据确认的业务事项',icon:'运',bad:s.businessActionCells>0,places:true},
       {name:'技术待修复',value:s.collectionActionCells,unit:'项',note:'登录、证据、解析或数据过期',icon:'技',error:s.collectionActionCells>0},
       {name:'未完成 / 待复核',value:s.pendingActionCells+(data.asinInventory?data.asinInventory.deferred:0),unit:'项',note:(data.asinInventory?data.asinInventory.deferred:0)+' 个 ASIN 低频复核',icon:'待',warn:true}
     ];
-    q('#kpis').innerHTML=items.map(function(x){return '<article class="kpi"><div class="kpi-top"><span>'+esc(x.name)+'</span><i class="kpi-icon">'+esc(x.icon)+'</i></div><div><div class="kpi-value" style="'+(x.bad?'color:var(--bad)':x.error?'color:var(--error)':x.warn?'color:var(--warn)':'')+'">'+esc(x.value)+'<small>'+esc(x.unit)+'</small></div><div class="kpi-note">'+esc(x.note)+'</div>'+(x.progress!==undefined?'<div class="progress"><span style="width:'+x.progress+'%"></span></div>':'')+'</div></article>'}).join('');
+    q('#kpis').innerHTML=items.map(function(x){return '<article class="kpi'+(x.places?' kpi-business':'')+'"><div class="kpi-top"><span>'+esc(x.name)+'</span><i class="kpi-icon">'+esc(x.icon)+'</i></div><div><div class="kpi-value" style="'+(x.bad?'color:var(--bad)':x.error?'color:var(--error)':x.warn?'color:var(--warn)':'')+'">'+esc(x.value)+'<small>'+esc(x.unit)+'</small></div><div class="kpi-note">'+esc(x.note)+'</div>'+(x.progress!==undefined?'<div class="progress"><span style="width:'+x.progress+'%"></span></div>':'')+(x.places?businessPlacesHtml():'')+'</div></article>'}).join('');
   }
 
   function renderReadiness(){

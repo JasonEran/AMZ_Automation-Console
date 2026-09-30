@@ -65,6 +65,24 @@ test('reviews collects every low-star page and validates the independent counts'
   assert.equal(verifyReviewsPage({ ...empty.dom, paginationCount: 0 }, empty.txt, 1), false);
 });
 
+test('a bare N/5 inside a customer review body is not a rating label (2026-09-17 live regression)', () => {
+  const reviews = Array.from({ length: 10 }, (_, index) => ({
+    reviewId: 'RBODYNOISE' + index, stars: index % 3 + 1,
+    asin: 'B012345678', date: '2026-07-01', source: 'kat-star-rating:value',
+  }));
+  const pageText = '56 条评论\n星级评定 (3)\n3 星\n2 星\n1 星\n时间段\n'
+    + 'A.R.E.K. Verdict: 3/5. Installation was easy, but Plain Paper performance is poor.\n'
+    + reviews.map((row) => row.stars + ' out of 5 stars').join('\n');
+  const txt = parseReviewsPageText(pageText);
+  assert.equal(txt.resultTotal, 56, 'header total still parsed');
+  assert.equal(txt.total, 10, 'review body noise must not inflate the text total');
+  const dom = { filters: filters(), paginationCount: 1, pagination: { total: 56, size: 10, page: 1 },
+    total: 10, lowCount: 10, reviews, lowReviews: reviews };
+  assert.equal(verifyReviewsPage(dom, txt, 1), true, 'label-only counting restores dual-path equality');
+  const extraLabel = parseReviewsPageText(pageText + '\n2 out of 5 stars');
+  assert.equal(verifyReviewsPage(dom, extraLabel, 1), false, 'a genuine extra rating label must still fail verification');
+});
+
 test('reviews captures each verified page before moving, with exact row IDs and publication dates', async () => {
   const steps=[];
   const result=await collectReviewsPages({read:async n=>{steps.push('read'+n);const p=page(n);

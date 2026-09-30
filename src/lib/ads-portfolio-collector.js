@@ -80,7 +80,8 @@ async function moveView({ zn, storeId, kind, portfolioId, page = null, top = nul
   }
   const after = await gate(zn, storeId, kind, portfolioId);
   if (rawPageIdentity(after) !== rawPageIdentity(before)) throw new Error('广告组合视图调整期间地址发生变化');
-  await sleep(600);
+  // Idle after the view change. The next readWindow still requires DOM and page text to agree.
+  await sleep(200);
   return scroll;
 }
 
@@ -101,7 +102,8 @@ async function readWindow({ zn, storeId, kind, portfolioId, expectedStart, expec
         // Apply the portfolio name scope on the list; clear every child table
         // search so campaigns without the portfolio's name suffix are included.
         await moveView({ zn, storeId, kind, portfolioId, search: expectedSearch });
-        await sleep(2000);
+        // Idle after Enter. The loop still requires DOM and page text to agree.
+        await sleep(200);
         searchReset = true;
         deadline = Date.now() + timeoutMs;
         continue;
@@ -208,7 +210,8 @@ export async function probePortfolioAdvertising({ zn, store, config, logger }) {
     storeId = opened.storeId;
     const visit = async (url) => {
       await zn.visit(storeId, url, { timeoutMs: 120000 });
-      await sleep(2000);
+      // 200 ms, then readWindow still requires DOM and page text to agree.
+      await sleep(200);
       await zn.selectAdvertisingAccount?.(storeId, { timeoutMs: 45000 });
     };
     await visit(LIST_URL);

@@ -1,4 +1,4 @@
-import { createAlerter } from '../lib/alert.js';
+import { createAlerter, defaultDingTalkSeverities } from '../lib/alert.js';
 import { pushToCrm } from '../lib/crm.js';
 import { sanitizeUrl } from '../lib/redact.js';
 import { bjIso } from '../lib/time.js';
@@ -36,9 +36,9 @@ export async function runTestNotify({ config, logger, opts = {} }) {
   // class. Otherwise a CRITICAL-only test can prove the regular robot while
   // leaving the operations robot entirely untested (or vice versa).
   const preferredSeverity = (channel) => {
-    const levels = channel.severities
-      || (channel.name === 'operations' ? ['ERROR', 'WARN'] : ['OK', 'CRITICAL']);
-    const preferred = channel.name === 'operations' ? ['ERROR', 'WARN'] : ['CRITICAL', 'OK'];
+    const levels = channel.severities || defaultDingTalkSeverities(channel);
+    const preferred = channel.name === 'operations' ? ['ERROR', 'WARN']
+      : channel.name === 'business' ? ['CRITICAL', 'WARN'] : ['CRITICAL', 'OK'];
     return preferred.find((level) => levels.includes(level)) || levels[0] || 'ERROR';
   };
   const severities = opts.severity
@@ -48,12 +48,24 @@ export async function runTestNotify({ config, logger, opts = {} }) {
       : ['CRITICAL'];
   const alerts = [];
   for (const severity of severities) {
-    const operationsTest = severity === 'ERROR' || severity === 'WARN';
-    const routeLabel = operationsTest ? '运维机器人（采集故障与需关注）' : '常规机器人（业务异常与运行正常）';
+    const accepts = (channel) => (channel.severities || defaultDingTalkSeverities(channel)).includes(severity);
+    const businessTest = dtChannels.some((channel) => channel.name === 'business' && accepts(channel));
+    const regularTest = dtChannels.some((channel) => !['operations', 'business'].includes(channel.name) && accepts(channel));
+    const operationsTest = dtChannels.some((channel) => channel.name === 'operations' && accepts(channel))
+      || (!dtChannels.length && (severity === 'ERROR' || severity === 'WARN'));
+    const routeLabel = [
+      regularTest ? '常规机器人（业务异常与运行正常）' : '',
+      businessTest ? '业务机器人（页面证据业务事项）' : '',
+      operationsTest ? '运维机器人（采集故障与需关注）' : '',
+    ].filter(Boolean).join('；')
+      || (operationsTest ? '运维机器人（采集故障与需关注）' : '常规机器人（业务异常与运行正常）');
+    const titleAudience = businessTest && !regularTest && !operationsTest ? '业务'
+      : operationsTest && !regularTest && !businessTest ? '运维'
+      : '常规';
     alerts.push(await alerter.send({
       check: 'channel-connectivity',
       severity,
-      title: `[测试消息，请忽略] ${operationsTest ? '运维' : '常规'}通知通道连通性验证`,
+      title: `[测试消息，请忽略] ${titleAudience}通知通道连通性验证`,
       lines: [
         '测试性质：仅验证消息投递，不代表真实业务状态',
         `目标路由：${routeLabel}`,

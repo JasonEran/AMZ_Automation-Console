@@ -929,12 +929,29 @@ export const reviewsCheck = {
   },
   extractor: REVIEWS_EXTRACTOR,
   parseText(text) {
-    const t = String(text).replace(/\s+/g, ' ');
+    const raw = String(text);
+    const t = raw.replace(/\s+/g, ' ');
     const stars = [];
     const reviews = [];
-    const re = /(\d(?:\.\d)?)\s*(?:out of|\/)\s*5/gi;
+    // Rating evidence must be shaped like a rating label: either it carries the
+    // explicit star word ("1 out of 5 stars", "2 / 5 星"), or it stands alone on
+    // its own line. A bare "N/5" typed inside a customer-written review body
+    // (真机证据 2026-09-17："Verdict: 3/5.") is page content, not a rating:
+    // counting it inflated the independent text total and broke same-page
+    // DOM/text equality for every store sharing that brand page. Unrecognised
+    // serialisations stop counting and surface as PARTIAL_EVIDENCE instead of
+    // false normal, so the fail-closed direction is unchanged.
+    const labelRe = /(\d(?:\.\d)?)\s*(?:out of|\/)\s*5(?:\s*(?:stars?|星))?/gi;
     let m;
-    while ((m = re.exec(t)) !== null && stars.length < 200) {
+    while ((m = labelRe.exec(t)) !== null && stars.length < 200) {
+      const v = parseFloat(m[1]);
+      if (v >= 1 && v <= 5 && /(?:stars?|星)\s*$/i.test(m[0])) {
+        stars.push(v);
+        reviews.push({ stars: v, source: 'pagetext' });
+      }
+    }
+    const bareLineRe = /^[ \t]*(\d(?:\.\d)?)[ \t]*(?:out of|\/)[ \t]*5[ \t]*$/gm;
+    while ((m = bareLineRe.exec(raw)) !== null && stars.length < 200) {
       const v = parseFloat(m[1]);
       if (v >= 1 && v <= 5) {
         stars.push(v);
@@ -1119,6 +1136,12 @@ export const outletCheck = {
     '/inventoryplanning/manageinventoryhealth?sort_column=product_details&sort_direction=asc&sort_column_sub=msku&RECOMMENDATION=OUTLET_DEAL',
   ],
   settleMs: 1200,
+  // Some accounts replace Manage Inventory Health with /manage/fba-inventory and
+  // then rewrite the recommendation query (`recommendation` -> `~recommendation`).
+  // Wait until that redirect stops, and re-read if it still moves during the probe.
+  urlStabilizeMs: 15000,
+  urlStabilizePollMs: 400,
+  pageIdentityRetries: 2,
   readyTimeoutMs: 30000,
   readyPollMs: 2000,
   ready({ dom, txt }) {
@@ -1142,18 +1165,21 @@ export const outletCheck = {
       .map((match) => Number(match[1] ?? match[2])).filter(Number.isFinite);
     const positiveResultCount = resultCounts.filter((count) => count > 0).sort((a, b) => b - a)[0] ?? null;
     const zeroResults = positiveResultCount === null
-      && /0\s*results|did not return any results|0\s*条结果|未返回任何结果/i.test(t);
+      && /0\s*results|did not return any results|0\s*条结果|未返回任何结果|无结果/i.test(t);
     const hits = t.match(/create (?:an )?outlet deal|创建奥特莱斯限时促销/gi) || [];
     const filterHits = t.match(/(?:selected filters?|filter criteria|已选筛选条件)[^]{0,120}(?:create (?:an )?outlet deal|创建奥特莱斯限时促销)/gi) || [];
+    const menuHits = t.match(/(?:批量操作|bulk actions?)\s+(?:创建奥特莱斯限时促销|create (?:an )?outlet deal)\s+(?:推荐|recommendations?)/gi) || [];
     const totalMatch = /(?:total(?:\s+results?)?\s*[:\-]?\s*)(\d+)|\b(\d+)\s+results?\b/i.exec(t)
       || /共\s*(\d+)\s*条结果/.exec(t)
       || /总计\s*[:：]\s*(\d+)/.exec(t);
-    const reportedTotal = positiveResultCount ?? (totalMatch ? Number(totalMatch[1] ?? totalMatch[2]) : null);
+    const rangeTotal = /(\d+)\s*[~～]\s*\d+\s*[，,]\s*共\s*(\d+)/.exec(t);
+    const reportedTotal = positiveResultCount ?? (rangeTotal ? Number(rangeTotal[2]) : null)
+      ?? (totalMatch ? Number(totalMatch[1] ?? totalMatch[2]) : null);
     const hasNextLabel = /\bnext(?:\s+page)?\b|下一页/i.test(t);
     const nextDisabled = /(?:next(?:\s+page)?|下一页)[^]{0,60}(?:disabled|unavailable|不可用|已禁用)|(?:disabled|不可用|已禁用)[^]{0,60}(?:next(?:\s+page)?|下一页)/i.test(t);
     const hasNextPage = hasNextLabel && !nextDisabled;
     const loading = /loading|please wait|加载中|请稍候/i.test(t);
-    const mentionCount = zeroResults ? 0 : Math.max(hits.length - filterHits.length, 0);
+    const mentionCount = zeroResults ? 0 : Math.max(hits.length - filterHits.length - menuHits.length, 0);
     const activityReliable = !zeroResults && mentionCount > 0
       && reportedTotal !== null && reportedTotal === mentionCount;
     const reportedTotalReliable = false;
