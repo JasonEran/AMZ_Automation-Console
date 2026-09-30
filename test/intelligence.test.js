@@ -137,6 +137,25 @@ test('collector discards all content when identity or live safety changes',async
  const r=await collectProduct({zn,storeId:'x',target,config:{ziniao:{}},safety,wait:async()=>{}});
  assert.equal(r.status,'ERROR');assert.equal(r.priceCents,null);assert.deepEqual(r.evidence,{suppressed:true});
 });
+test('a non-auth page move is reread once, and a second move or sign-in is not',async()=>{
+ const target={asin:dom.asin,storeKey:'US-A'};
+ const product='https://www.amazon.com/dp/'+dom.asin;
+ let phase=0,extracts=0;
+ const zn={visit:async()=>{},execExtract:async()=>{extracts++;return {result:dom};},content:async()=>({text:page})};
+ const safety=async()=>{
+  phase++;
+  if(phase===1)return {safe:false,code:'PAGE_CHANGED_DURING_LIVE_SAFETY_PROBE',authSensitive:false,blocked:false};
+  return classifyUrlSafety(product);
+ };
+ const recovered=await collectProduct({zn,storeId:'x',target,config:{ziniao:{}},safety,wait:async()=>{}});
+ assert.equal(recovered.status,'COMPLETE');assert.equal(recovered.priceCents,1799);assert.equal(extracts,1);assert.equal(phase,3);
+ let signins=0;
+ const blocked=await collectProduct({zn,storeId:'x',target,config:{ziniao:{}},safety:async()=>{signins++;return classifyUrlSafety('https://www.amazon.com/ap/signin');},wait:async()=>{}});
+ assert.equal(blocked.status,'ERROR');assert.equal(blocked.evidence.suppressed,true);assert.equal(signins,1);
+ let moves=0;
+ const again=await collectProduct({zn,storeId:'x',target,config:{ziniao:{}},safety:async()=>{moves++;return {safe:false,code:'PAGE_CHANGED_DURING_LIVE_SAFETY_PROBE',authSensitive:false,blocked:false};},wait:async()=>{}});
+ assert.equal(again.status,'ERROR');assert.equal(again.evidence.suppressed,true);assert.equal(moves,2);assert.equal(extracts,1);
+});
 test('intelligence state survives retention while time-series evidence has a retention category',()=>{
  assert.equal(retentionClass('state/intelligence/state.json'),'keep');
  assert.equal(retentionClass('intelligence/snapshots/target/file.json'),'report');

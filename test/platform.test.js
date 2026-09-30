@@ -622,6 +622,131 @@ test('alert routing is severity-specific and audits the sanitized dashboard URL 
   assert.equal(mode(path.dirname(alerter.fileSink)), 0o700);
 });
 
+test('business DingTalk robot receives only ads and performance anomalies', async (t) => {
+  const requests = [];
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    requests.push({ url: String(url), body: String(options?.body || '') });
+    return {
+      ok: true, status: 200,
+      async text() { return JSON.stringify({ errcode: 0, errmsg: 'ok' }); },
+    };
+  });
+  const outDir = tempDir('amzguard-alert-business-');
+  const alerter = createAlerter({
+    outDir, logger: loggerStub(),
+    config: {
+      outDir, dashboard: {},
+      alert: {
+        console: false, file: false,
+        dingtalk: { channels: [
+          { name: 'regular', enabled: true, webhook: 'https://oapi.dingtalk.com/robot/send?access_token=REGULAR_FIXTURE', severities: ['OK', 'CRITICAL'] },
+          { name: 'operations', enabled: true, webhook: 'https://oapi.dingtalk.com/robot/send?access_token=OPS_FIXTURE', severities: ['ERROR', 'WARN'] },
+          { name: 'business', enabled: true, webhook: 'https://oapi.dingtalk.com/robot/send?access_token=' + 'BUSINESS_FIXTURE', severities: ['CRITICAL', 'WARN'] },
+        ] },
+      },
+    },
+  });
+
+  const excluded = [
+    { check: 'voc', severity: 'CRITICAL', title: 'VOC 异常', status: 'POOR_CX' },
+    { check: 'reviews', severity: 'CRITICAL', title: '低星评价', status: 'LOW_REVIEW' },
+    { check: 'asin-health', severity: 'WARN', title: '评分下降', status: 'RATING_DROP' },
+    { check: 'outlet', severity: 'WARN', title: '奥特莱斯', status: 'NEW_DEAL' },
+    { check: 'feedback', severity: 'CRITICAL', title: '当天低分', status: 'TODAY_LOW_RATING' },
+    { check: 'inbox', severity: 'WARN', title: '买家消息', status: 'NEW_BUYER_MESSAGE' },
+  ];
+  for (const item of excluded) {
+    await alerter.send({
+      check: item.check, severity: item.severity, title: item.title,
+      lines: [`**US-01** → ${item.status}`],
+      data: { stores: [{ status: item.status }] },
+    });
+  }
+  await alerter.send({
+    check: 'ads-status', severity: 'CRITICAL', title: '广告开关检查异常',
+    lines: ['**US-02** → SHOULD_BE_OFF'],
+    data: { stores: [{ status: 'SHOULD_BE_OFF' }] },
+  });
+  await alerter.send({
+    check: 'performance', severity: 'CRITICAL', title: '绩效未处理检查异常',
+    lines: ['**US-03** → ATTENTION_REQUIRED'],
+    data: { stores: [{ status: 'ATTENTION_REQUIRED' }] },
+  });
+  await alerter.send({
+    check: 'ads-status', severity: 'ERROR', title: '广告采集失败',
+    lines: ['**US-04** → PARTIAL_EVIDENCE'],
+    data: { stores: [{ status: 'PARTIAL_EVIDENCE' }] },
+  });
+  await alerter.send({
+    check: 'performance', severity: 'ERROR', title: '绩效采集失败',
+    lines: ['**US-05** → LOGIN_REQUIRED'],
+    data: { stores: [{ status: 'LOGIN_REQUIRED' }] },
+  });
+
+  const business = requests.filter((entry) => /access_token=BUSINESS_FIXTURE/.test(entry.url));
+  const regular = requests.filter((entry) => /access_token=REGULAR_FIXTURE/.test(entry.url));
+  const operations = requests.filter((entry) => /access_token=OPS_FIXTURE/.test(entry.url));
+  assert.equal(business.length, 2);
+  const adsBody = business.find((entry) => entry.body.includes('SHOULD_BE_OFF')).body;
+  const performanceBody = business.find((entry) => entry.body.includes('ATTENTION_REQUIRED')).body;
+  assert.match(adsBody, /广告值守/);
+  assert.equal(adsBody.includes('ASIN'), false);
+  assert.match(performanceBody, /ASIN/);
+  assert.equal(performanceBody.includes('广告值守'), false);
+  assert.match(adsBody, /亚马逊店铺巡检通知/);
+  const businessText = business.map((entry) => entry.body).join('\n');
+  assert.doesNotMatch(businessText, /POOR_CX|LOW_REVIEW|RATING_DROP|NEW_DEAL|TODAY_LOW_RATING|NEW_BUYER_MESSAGE|PARTIAL_EVIDENCE|LOGIN_REQUIRED/);
+  assert.equal(regular.filter((entry) => entry.body.includes('SHOULD_BE_OFF')).length, 1);
+  assert.doesNotMatch(regular.find((entry) => entry.body.includes('SHOULD_BE_OFF')).body, /广告值守/);
+  assert.ok(operations.some((entry) => entry.body.includes('PARTIAL_EVIDENCE')));
+  assert.ok(operations.some((entry) => entry.body.includes('LOGIN_REQUIRED')));
+  assert.ok(operations.some((entry) => entry.body.includes('RATING_DROP')));
+  assert.equal(requests.some((entry) => /oapi\.dingtalk\.com/.test(entry.url) && !/FIXTURE/.test(entry.url)), false);
+});
+
+test('DINGTALK_BUSINESS_WEBHOOK adds a business route without moving the existing robots', () => {
+  const root = tempDir('amzguard-business-env-');
+  const configFile = path.join(root, 'config.json');
+  const storesFile = path.join(root, 'stores.json');
+  fs.writeFileSync(configFile, JSON.stringify({ paths: { outDir: root } }));
+  fs.writeFileSync(storesFile, JSON.stringify({ stores: [] }));
+  const script = `import childProcess from 'node:child_process';
+    import { syncBuiltinESMExports } from 'node:module';
+    // Missing optional credentials must never consult the developer's Keychain.
+    childProcess.execFileSync = () => { throw new Error('offline credential fixture'); };
+    syncBuiltinESMExports();
+    const { loadConfig } = await import(${JSON.stringify(path.join(process.cwd(), 'src/lib/config.js'))});
+    const { config } = loadConfig({ configFile: process.argv[1], storesFile: process.argv[2] });
+    const channels = (config.alert.dingtalk.channels || []).map((channel) => ({
+      name: channel.name, enabled: channel.enabled, severities: channel.severities,
+      webhook: channel.webhook,
+    }));
+    console.log(JSON.stringify({ enabled: config.alert.dingtalk.enabled, legacy: config.alert.dingtalk.webhook, channels }));`;
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', script, configFile, storesFile], {
+    encoding: 'utf8',
+    env: {
+      PATH: process.env.PATH,
+      TMPDIR: process.env.TMPDIR,
+      DINGTALK_WEBHOOK: 'https://oapi.dingtalk.com/robot/send?access_token=REGULAR_FIXTURE',
+      DINGTALK_SECRET: 'regular-fixture-secret',
+      DINGTALK_OPS_WEBHOOK: 'https://oapi.dingtalk.com/robot/send?access_token=OPS_FIXTURE',
+      DINGTALK_OPS_SECRET: 'ops-fixture-secret',
+      DINGTALK_BUSINESS_WEBHOOK: 'https://oapi.dingtalk.com/robot/send?access_token=' + 'BUSINESS_FIXTURE',
+      DINGTALK_BUSINESS_SECRET: '',
+    },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const loaded = JSON.parse(result.stdout);
+  assert.equal(loaded.enabled, true);
+  assert.equal(loaded.legacy, '');
+  assert.deepEqual(loaded.channels.map((channel) => channel.name), ['regular', 'operations', 'business']);
+  assert.deepEqual(loaded.channels[0].severities, ['OK', 'CRITICAL']);
+  assert.deepEqual(loaded.channels[1].severities, ['ERROR', 'WARN']);
+  assert.deepEqual(loaded.channels[2].severities, ['CRITICAL', 'WARN']);
+  assert.match(loaded.channels[2].webhook, /BUSINESS_FIXTURE/);
+  assert.doesNotMatch(result.stderr, /BUSINESS_FIXTURE|REGULAR_FIXTURE|OPS_FIXTURE/);
+});
+
 test('generic alert webhook refuses cleartext non-loopback endpoints without a request', async () => {
   const outDir = tempDir('amzguard-alert-http-');
   const logger = loggerStub();

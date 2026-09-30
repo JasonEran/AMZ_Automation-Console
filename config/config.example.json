@@ -65,6 +65,11 @@
     "retryDelayMs": 8000
   },
 
+  "adsStatus": {
+    "_concurrency_note": "仅设置 ads-status 的跨店并发数；其他检查使用 ziniao.concurrency。程序默认 1，本示例为 2。组合内页面仍串行，必须取得完整且一致的 DOM 与页面文本证据。",
+    "concurrency": 2
+  },
+
   "storeHealth": {
     "_comment": "第 1 项：Policy Compliance == Healthy 为正常，其他一律异常（含无法判定）。",
     "_paths_note": "实测 /performance/dashboard 才是 Account Health 页；/performance/dashboard/accounthealth 是 404。",
@@ -103,7 +108,7 @@
       "enabled": false,
       "webhook": "",
       "secret": "",
-      "_channels_note": "Webhook/Secret 仅允许环境变量或 macOS Keychain；operations 接收程序故障，regular 接收业务状态。",
+      "_channels_note": "Webhook/Secret 仅允许环境变量或 macOS Keychain；operations 接收程序故障，regular 接收业务状态与运行正常。DINGTALK_BUSINESS_WEBHOOK 可选，只接收广告和绩效的业务异常，不接收其他检查或采集故障。",
       "channels": [],
       "atMobiles": [],
       "atAll": false
