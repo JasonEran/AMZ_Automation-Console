@@ -10,6 +10,7 @@
 ## 发布核验
 
 - [2026-09-30 仓库与服务器版本核验](releases/2026-09-30-repository-sync.md)
+- [2026-09-30 公开前凭据审计](releases/2026-09-30-publication-security.md)
 
 ## 历史规划
 

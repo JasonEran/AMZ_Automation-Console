@@ -1,0 +1,22 @@
+title = "AMZ Guard secret scanning"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "amzguard-dingtalk-webhook-token"
+description = "DingTalk robot access token"
+regex = '''https://oapi\.dingtalk\.com/robot/send\?access_token=([A-Za-z0-9_-]{16,})'''
+secretGroup = 1
+keywords = ["access_token"]
+
+[[rules.allowlists]]
+description = "Exact synthetic token used by the historical business-channel HTTP mocks"
+regexTarget = "secret"
+regexes = ['''^BUSINESS_FIXTURE$''']
+
+[[rules]]
+id = "amzguard-dingtalk-signing-secret"
+description = "DingTalk robot signing secret"
+regex = '''\bSEC[0-9a-fA-F]{32,}\b'''
+keywords = ["SEC"]
