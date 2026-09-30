@@ -65,6 +65,11 @@
     "retryDelayMs": 8000
   },
 
+  "adsStatus": {
+    "_concurrency_note": "只作用于广告开关检查的跨店并发。ziniao.concurrency 仍是其余检查的上限。2026-09-24 实测：并发 2，且 visit() 后等待 200ms（readWindow 仍要求 DOM 与页面文本一致），ads-off 从 34 分 4 秒降到 26 分 4 秒。名称筛选按下回车后的固定等待、以及 moveView 在视图变化后的固定等待，同样是 200ms。45 秒证据轮询不变。组合内页面仍串行，未完成表格不得当作完整。",
+    "concurrency": 2
+  },
+
   "storeHealth": {
     "_comment": "第 1 项：Policy Compliance == Healthy 为正常，其他一律异常（含无法判定）。",
     "_paths_note": "实测 /performance/dashboard 才是 Account Health 页；/performance/dashboard/accounthealth 是 404。",

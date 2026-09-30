@@ -63,6 +63,10 @@ export const DEFAULTS = {
       passkeyDialogYRatio: 0.613,
     },
   },
+  adsStatus: {
+    // Cross-store cap for ads-status only. Other checks keep ziniao.concurrency.
+    concurrency: 1,
+  },
   storeHealth: {
     paths: ['/performance/dashboard', '/performance/dashboard?ref=ah_home'],
     defaultHost: 'sellercentral.amazon.com',
