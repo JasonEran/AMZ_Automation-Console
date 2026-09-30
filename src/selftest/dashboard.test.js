@@ -7,7 +7,7 @@ import vm from 'node:vm';
 import { latestEffectiveCheck, latestStoreSnapshots, readCheckHistory, storeHistory } from '../lib/dashboard-history.js';
 import { artifactPart } from '../lib/artifact-name.js';
 import { actionStateFor, rawStateLabel, worstAction } from '../lib/dashboard-status.js';
-import { DASHBOARD_HTML } from '../web/dashboard.js';
+import { DASHBOARD_HTML, businessItemPlace } from '../web/dashboard.js';
 import { buildSessionHealth } from '../lib/session-health.js';
 
 function writeReport(root, name, value, checkId = 'performance') {
@@ -182,6 +182,42 @@ test('dashboard has distinct business/collection states and production controls'
   const script = /<script>([\s\S]*?)<\/script>/.exec(DASHBOARD_HTML)?.[1];
   assert.ok(script);
   assert.doesNotThrow(() => new vm.Script(script), 'dashboard inline JavaScript must compile');
+});
+
+test('overview business items name the store and area and link only to an existing page', () => {
+  const checks = [
+    ['store-health', '店铺健康', 'store-risk'],
+    ['performance', '绩效', 'store-risk'],
+    ['feedback', 'Feedback', 'customer-voice'],
+    ['inbox', 'Inbox', 'customer-voice'],
+    ['reviews', 'Reviews', 'customer-voice'],
+    ['voc', 'VOC', 'customer-voice'],
+    ['asin-health', 'ASIN', 'product-status'],
+    ['outlet', '奥特莱斯', 'product-status'],
+    ['ads-status', '广告', 'ads-watch'],
+  ];
+  for (const [checkId, short, view] of checks) {
+    assert.deepEqual(businessItemPlace({
+      storeName: 'US-01', storeKey: 'US-01', checkId, actionState: 'BUSINESS',
+    }, [{ id: checkId, short }]), { label: `US-01 · ${short}`, view });
+  }
+  assert.deepEqual(businessItemPlace({
+    storeKey: 'JP-01', checkId: 'reviews', checkTitle: 'Customer Reviews 检查',
+  }, []), { label: 'JP-01 · Customer Reviews 检查', view: 'customer-voice' });
+  const unmapped = businessItemPlace({
+    storeName: 'US-02', checkId: 'not-a-page', checkTitle: '未知检查',
+  }, []);
+  assert.equal(unmapped.view, null);
+  assert.equal(unmapped.label, 'US-02 · 未知检查');
+  assert.equal(businessItemPlace(null, null).label, '店铺 · 检查项');
+  assert.match(DASHBOARD_HTML, /function businessPlacesHtml\(\)/);
+  assert.match(DASHBOARD_HTML, /class="kpi-places"/);
+  assert.match(DASHBOARD_HTML, /if\(!rows\.length\)return ''/);
+  assert.match(DASHBOARD_HTML, /if\(!place\.view\|\|!VIEW_META\[place\.view\]\)return '<li><span class="kpi-place"/);
+  assert.match(DASHBOARD_HTML, /data-view="'\+esc\(place\.view\)\+'"/);
+  assert.match(DASHBOARD_HTML, /function businessItemPlace\(issue, checks\)/);
+  assert.match(DASHBOARD_HTML, /outlet: 'product-status'/);
+  assert.match(DASHBOARD_HTML, /label: storeName \+ ' · ' \+ area/);
 });
 
 test('evidence viewer preserves raw screenshots while making store identity explicit', () => {
